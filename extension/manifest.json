@@ -1,0 +1,76 @@
+{
+  "manifest_version": 3,
+  "name": "飞书会议遥控器",
+  "version": "1.0.0",
+  "description": "为飞书多维表格提供可自定义的会议遥控快捷键：浏览记录与字段、操作链接、输入评论和全屏演示。",
+  "minimum_chrome_version": "111",
+  "permissions": [
+    "storage"
+  ],
+  "host_permissions": [
+    "https://*.feishu.cn/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_page": "options.html",
+  "action": {
+    "default_title": "飞书会议遥控器",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/16.png",
+      "32": "icons/32.png",
+      "48": "icons/48.png"
+    }
+  },
+  "icons": {
+    "16": "icons/16.png",
+    "32": "icons/32.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.feishu.cn/base/*",
+        "https://*.feishu.cn/wiki/*",
+        "https://*.feishu.cn/share/base/*"
+      ],
+      "js": [
+        "canvas-bridge.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://*.feishu.cn/base/*",
+        "https://*.feishu.cn/wiki/*",
+        "https://*.feishu.cn/share/base/*"
+      ],
+      "js": [
+        "shared.js",
+        "adapter.js",
+        "field-navigation.js",
+        "content.js"
+      ],
+      "run_at": "document_start",
+      "css": [
+        "content.css"
+      ]
+    }
+  ],
+  "commands": {
+    "toggle-meeting": {
+      "description": "进入或退出全屏会议模式（备用快捷键）"
+    },
+    "return-to-meeting": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+8",
+        "mac": "MacCtrl+Shift+8"
+      },
+      "description": "电源键：回到最近的会议多维表格"
+    }
+  },
+  "homepage_url": "https://github.com/YinsenWANG/feishu-meeting-remote"
+}

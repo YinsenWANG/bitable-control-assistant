@@ -1,0 +1,18 @@
+{
+  "name": "feishu-meeting-remote",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Customizable Chrome meeting controls for Feishu Base",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24.15.0"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.cjs",
+    "check": "node scripts/check.cjs",
+    "package": "python3 scripts/package.py"
+  },
+  "devDependencies": {
+    "jsdom": "30.1.3"
+  }
+}
