@@ -73,6 +73,7 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
     if(message?.type==='presentation'&&message.enabled===false&&sender.tab?.id)return withSession(()=>presentation(sender,false));
     if(!sender.tab?.id||!M.target(sender.url||sender.tab.url))throw new Error('请在飞书多维表格中操作。');
     const tabId=sender.tab.id;
+    if(message?.type==='reload-page'){await chrome.tabs.reload(tabId);return {ok:true};}
     if(message?.type==='presentation'){
       if(typeof message.enabled!=='boolean')throw new Error('无效的会议模式状态');
       return withSession(()=>presentation(sender,message.enabled));

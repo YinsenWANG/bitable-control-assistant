@@ -7,7 +7,7 @@
     try{await navigator.clipboard.writeText(value);feedback('已复制键值：'+value);}catch{feedback('复制失败，请重试或手动复制键值',true);}
   }
   function render(includeSettings=true){
-    if(includeSettings){$('autoEnable').checked=config.autoEnable;$('showHud').checked=config.showHud;$('zoomStep').value=config.zoomStep;}
+    if(includeSettings){$('autoEnable').checked=config.autoEnable;$('showHud').checked=config.showHud;$('hideHeader').checked=config.hideHeader;$('zoomStep').value=config.zoomStep;}
     $('bindings').replaceChildren();
     for(const a of M.ACTIONS){
       const row=document.createElement('tr');row.dataset.action=a.id;
@@ -18,7 +18,7 @@
       bind.append(kbd,copy);
       if(M.NATIVE[a.id]){
         const label=document.createElement('label'),native=document.createElement('input');label.className='native-option';native.type='checkbox';native.checked=config.nativeBindings[a.id];native.setAttribute('aria-label',a.label+'使用原生快捷键');
-        native.onchange=()=>{const previous=config.nativeBindings[a.id];config.nativeBindings[a.id]=native.checked;try{M.config(config);}catch(e){config.nativeBindings[a.id]=previous;native.checked=previous;feedback(e.message,true);return;}dirty=true;recording=null;render(false);feedback(native.checked?'保存后使用飞书原生组合键；请同步设置遥控映射':'已恢复自定义组合键，保存后生效');};
+        native.onchange=()=>{const previous=config.nativeBindings[a.id];config.nativeBindings[a.id]=native.checked;try{M.config(config);}catch(e){config.nativeBindings[a.id]=previous;native.checked=previous;feedback(e.message,true);return;}dirty=true;recording=null;render(false);feedback(native.checked?'保存后使用原生组合键；请同步设置遥控映射':'已恢复自定义组合键，保存后生效');};
         label.append(native,document.createTextNode('使用原生快捷键'));label.title=M.NATIVE[a.id].note;bind.append(label);
       }
       const controls=document.createElement('td'),button=document.createElement('button'),clear=document.createElement('button');
@@ -29,7 +29,7 @@
     }
   }
   function paintRecording(){for(const row of $('bindings').children){const active=row.dataset.action===recording;row.classList.toggle('recording',active);row.querySelector('.record-btn').textContent=active?'取消':'录入';row.querySelector('kbd').textContent=active?'请按组合键…':M.label(M.bindingFor(row.dataset.action,config));}}
-  function readForm(){return M.config({...config,autoEnable:$('autoEnable').checked,showHud:$('showHud').checked,zoomStep:Number($('zoomStep').value)});}
+  function readForm(){return M.config({...config,autoEnable:$('autoEnable').checked,showHud:$('showHud').checked,hideHeader:$('hideHeader').checked,zoomStep:Number($('zoomStep').value)});}
   document.addEventListener('keydown',e=>{
     if(!recording&&!testing)return;
     e.preventDefault();e.stopImmediatePropagation();
@@ -44,12 +44,12 @@
     config.bindings[recording]=value;if(M.NATIVE[recording])config.nativeBindings[recording]=false;recording=null;dirty=true;render(false);feedback('已录入 '+M.label(value)+'，保存后生效');
   },true);
   $('testToggle').onclick=()=>{testing=!testing;recording=null;paintRecording();$('testToggle').textContent=testing?'停止检测':'开始检测';feedback(testing?'检测中：按键仅显示，不执行动作':'检测已停止');};
-  for(const id of ['autoEnable','showHud','zoomStep'])$(id).addEventListener('input',()=>{dirty=true;});
+  for(const id of ['autoEnable','showHud','hideHeader','zoomStep'])$(id).addEventListener('input',()=>{dirty=true;});
   $('save').onclick=async()=>{try{config=readForm();await chrome.storage.local.set({config});dirty=false;feedback('已保存，打开的飞书页面会立即应用新按键');}catch(e){feedback(e.message,true);}};
   $('restore').onclick=()=>{config.bindings={...M.DEFAULTS.bindings};config.nativeBindings={...M.DEFAULTS.nativeBindings};recording=null;dirty=true;render(false);feedback('已恢复默认按键，保存后生效');};
-  $('export').onclick=()=>{try{const data=readForm();const url=URL.createObjectURL(new Blob([JSON.stringify({format:'feishu-meeting-remote',version:4,config:data},null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='飞书会议遥控器-按键配置.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(e){feedback(e.message,true);}};
+  $('export').onclick=()=>{try{const data=readForm();const url=URL.createObjectURL(new Blob([JSON.stringify({format:'feishu-meeting-remote',version:5,config:data},null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='飞书会议遥控器-按键配置.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(e){feedback(e.message,true);}};
   $('import').onclick=()=>$('importFile').click();
-  $('importFile').onchange=async()=>{const file=$('importFile').files[0];if(!file)return;try{if(file.size>64000)throw new Error('配置文件过大');const obj=JSON.parse(await file.text());if(obj.format!=='feishu-meeting-remote'||![1,2,3,4].includes(obj.version))throw new Error('不是此扩展的配置文件');config=M.config(obj.config);recording=null;dirty=true;render();feedback('已导入，请检查后保存');}catch(e){feedback('导入失败：'+e.message,true);}finally{$('importFile').value='';}};
+  $('importFile').onchange=async()=>{const file=$('importFile').files[0];if(!file)return;try{if(file.size>64000)throw new Error('配置文件过大');const obj=JSON.parse(await file.text());if(obj.format!=='feishu-meeting-remote'||![1,2,3,4,5].includes(obj.version))throw new Error('不是此扩展的配置文件');config=M.config(obj.config);recording=null;dirty=true;render();feedback('已导入，请检查后保存');}catch(e){feedback('导入失败：'+e.message,true);}finally{$('importFile').value='';}};
   async function refreshGlobalShortcut(){
     try{const commands=await chrome.commands.getAll();const value=commands.find(c=>c.name==='return-to-meeting')?.shortcut||'';$('meetingShortcut').textContent=value||'未设置，请点击下方按钮';$('copyMeetingShortcut').disabled=!value;$('copyMeetingShortcut').onclick=()=>copyValue(value);}
     catch{$('meetingShortcut').textContent='请在 Chrome 扩展快捷键中设置';}

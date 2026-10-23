@@ -119,6 +119,26 @@ test('collapsed native option lists do not consume field navigation keys',()=>{
   const {d,w,a}=fixture(),box=clippedOptions(w);a.moveField(1);a.moveField(1);
   assert.equal(a.currentFieldStop().field,a.fieldStops()[1].field);assert.equal(box.lastElementChild.scrollTop,0);d.window.close();
 });
+test('prose with many embedded links is one field stop; only typed URL fields create link stops',()=>{
+  const {d,w,a}=fixture(),editor=w.document.querySelector('[contenteditable]');
+  for(let i=0;i<20;i++){const link=w.document.createElement('a');link.href='https://example.org/item/'+i;link.textContent='reference '+i;editor.append(link);}
+  const stops=a.fieldStops();assert.equal(stops.length,5);
+  assert.equal(stops.filter(s=>s.kind==='link').length,2);
+  assert.ok(stops.filter(s=>s.kind==='link').every(s=>s.element.closest('.bitable-card-edit-cell-editor-Url')));
+  a.moveField(1);a.moveField(1);assert.equal(a.currentFieldStop().field,stops[1].field);d.window.close();
+});
+test('schema 4 settings retain custom keys and add native page reload without conflicts',()=>{
+  const c=M.config({schemaVersion:4,bindings:{toggleComments:'Alt+KeyM',zoomIn:'Alt+KeyZ'}});
+  assert.equal(c.schemaVersion,5);assert.equal(c.hideHeader,true);assert.equal(c.bindings.toggleComments,'Alt+KeyM');assert.equal(c.bindings.zoomIn,'Alt+KeyZ');
+  assert.equal(M.bindingFor('reloadPage',c),M.nativeBinding('reloadPage'));assert.equal(c.nativeBindings.reloadPage,true);assert.deepEqual(M.config(c),c);
+  const conflict=M.config({schemaVersion:4,bindings:{toggleComments:M.nativeBinding('reloadPage')}});
+  assert.equal(conflict.bindings.reloadPage,'');assert.equal(conflict.nativeBindings.reloadPage,false);
+});
+test('volume keys work in open editor popups and reload can use the browser native shortcut',()=>{
+  for(const context of ['comment','other','grid-edit','none'])for(const id of ['zoomIn','zoomOut','resetZoom'])assert.equal(M.inputPolicy(action(id),'Alt+KeyZ',context,{popup:true}),'run');
+  assert.equal(M.inputPolicy(action('reloadPage'),'Meta+KeyR','comment',{native:true,popup:true}),'native');
+  assert.equal(M.inputPolicy(action('reloadPage'),'Alt+KeyR','comment',{popup:true}),'run');
+});
 test('OK skips controls clipped by a collapsed ancestor and focuses the visible editor',async()=>{
   const {d,w,a}=fixture();clippedOptions(w);a.moveField(1);await a.confirm();
   assert.equal(w.document.activeElement.getAttribute('contenteditable'),'true');d.window.close();
@@ -144,7 +164,7 @@ test('empty native editors return without deleting, and spaces or attachments re
 });
 test('schema 3 menu key migrates to comments and Home is removed from page-local shortcuts',()=>{
   const c=M.config({schemaVersion:3,bindings:{toggleSidebar:'Alt+KeyM',home:'Control+Shift+Digit0',zoomIn:'Alt+KeyZ'}});
-  assert.equal(c.schemaVersion,4);assert.equal(c.bindings.toggleComments,'Alt+KeyM');assert.equal(c.bindings.toggleSidebar,'');assert.equal(c.bindings.home,undefined);assert.equal(c.bindings.zoomIn,'Alt+KeyZ');
+  assert.equal(c.schemaVersion,5);assert.equal(c.bindings.toggleComments,'Alt+KeyM');assert.equal(c.bindings.toggleSidebar,'');assert.equal(c.bindings.home,undefined);assert.equal(c.bindings.zoomIn,'Alt+KeyZ');
   assert.deepEqual(M.config(c),c);
   const native=M.config({schemaVersion:3,bindings:{toggleSidebar:'Alt+KeyS'},nativeBindings:{toggleSidebar:true}});
   assert.equal(native.bindings.toggleComments,M.nativeBinding('toggleSidebar'));assert.equal(native.nativeBindings.toggleSidebar,false);

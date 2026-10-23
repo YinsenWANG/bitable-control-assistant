@@ -27,7 +27,7 @@ function fixture(state){
       create:async options=>{const tab={id:100+state.tabs.size,windowId:options.windowId||10,...options};state.tabs.set(tab.id,tab);state.calls.push(['create',clone(tab)]);return clone(tab);},
       query:async()=>[clone(state.tabs.get(2))],
       getZoomSettings:async()=>({mode:'automatic',scope:'per-tab'}),setZoomSettings:async()=>{},
-      getZoom:async()=>1,setZoom:async()=>{},
+      getZoom:async()=>1,setZoom:async()=>{},reload:async id=>state.calls.push(['reload',id]),
       sendMessage:async()=>({ok:true})
     }
   };
@@ -94,6 +94,12 @@ test('ordinary pages cannot enter meeting mode; a navigating tab can release its
 test('Home without an active meeting produces a useful error and opens nothing',async()=>{
   const f=fixture();const result=await f.message({type:'return-to-meeting'},{});
   assert.equal(result.ok,false);assert.match(result.error,/先在/);assert.equal(f.state.tabs.size,2);
+});
+test('custom page reload is available without meeting mode and limited to its own Feishu tab',async()=>{
+  const f=fixture();assert.equal((await f.message({type:'reload-page'})).ok,true);
+  assert.deepEqual(f.state.calls.filter(x=>x[0]==='reload'),[['reload',1]]);
+  assert.equal((await f.message({type:'reload-page'},f.sender(2))).ok,false);
+  assert.equal(f.state.calls.filter(x=>x[0]==='reload').length,1);
 });
 test('field links open a new tab and retain the meeting origin; unsafe URLs are rejected',async()=>{
   const f=fixture();await f.message({type:'presentation',enabled:true});

@@ -3,31 +3,42 @@
   const M=globalThis.MeetingRemote;
   let config=M.DEFAULTS,enabled=false,ready=false,busy=false,changingMode=false,composing=false,compositionEnded=0,host,shadow,status,timer,seenDocument=null;
   const timings=new Map(),adapter=new M.FeishuAdapter(notify);
-  let zoom=1;
-  const scoped=()=>adapter.isBasePage();
+  let zoom=1,zoomRequest=0,pausedTimer,pausedHudVisible=false;
+  // Keep the confirmed Base identity through transient DOM replacement during zoom.
+  const scoped=()=>adapter.isBasePage()||!!(enabled&&seenDocument===modeKey()&&M.target(location.href));
   const modeKey=()=> 'fmr-enabled:'+location.pathname;
+  function pausedNotice(){
+    clearTimeout(pausedTimer);pausedHudVisible=true;
+    pausedTimer=setTimeout(()=>{pausedHudVisible=false;update();},3000);
+  }
+  function syncPresentation(){
+    const hide=enabled&&config.hideHeader&&scoped();
+    if(document.documentElement.hasAttribute('data-fmr-presentation')===hide)return;
+    document.documentElement.toggleAttribute('data-fmr-presentation',hide);
+    window.dispatchEvent(new Event('resize'));
+  }
   function notify(message,error=false){
-    mount();if(!status)return;status.textContent=message;status.style.color=error?'#ffb4b4':'#fff';clearTimeout(timer);timer=setTimeout(()=>{timer=null;update();},4500);
+    if(!enabled)pausedNotice();mount();update();if(!status)return;status.textContent=message;status.style.color=error?'#ffb4b4':'#fff';clearTimeout(timer);timer=setTimeout(()=>{timer=null;update();},4500);
   }
   function mount(){
     if(host?.isConnected||!document.documentElement)return;
     host=document.createElement('div');host.id='fmr-hud';host.style.cssText='position:fixed;z-index:2147483647;bottom:12px;left:50%;transform:translateX(-50%);max-width:calc(100vw - 24px);';
     shadow=host.attachShadow({mode:'closed'});
-    shadow.innerHTML='<style>:host{all:initial;font:14px -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}*{box-sizing:border-box}.bar{display:flex;align-items:center;gap:14px;background:#111e35f2;color:white;padding:11px 16px;border:1px solid #ffffff35;border-radius:14px;box-shadow:0 8px 26px #0003;white-space:nowrap;max-width:100%;}.dot{width:8px;height:8px;background:#4ade9c;border-radius:50%;flex:none}.state{font-weight:650}.help{font-size:12px;opacity:.75;overflow:hidden;text-overflow:ellipsis}button{background:#ffffff16;border:1px solid #ffffff32;border-radius:7px;color:white;padding:5px 8px;cursor:pointer;font:inherit;font-size:12px}.paused .dot{background:#a0acc0}@media(max-width:800px){.help{display:none}}</style><div class="bar"><span class="dot"></span><span class="state"></span><span class="help"></span><button class="toggle"></button><button class="settings">设置</button></div>';
+    shadow.innerHTML='<style>:host{all:initial;font:14px -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}:host([hidden]){display:none!important}*{box-sizing:border-box}.bar{display:flex;align-items:center;gap:14px;background:#111e35f2;color:white;padding:11px 16px;border:1px solid #ffffff35;border-radius:14px;box-shadow:0 8px 26px #0003;white-space:nowrap;max-width:100%;}.dot{width:8px;height:8px;background:#4ade9c;border-radius:50%;flex:none}.state{font-weight:650}.help{font-size:12px;opacity:.75;overflow:hidden;text-overflow:ellipsis}button{background:#ffffff16;border:1px solid #ffffff32;border-radius:7px;color:white;padding:5px 8px;cursor:pointer;font:inherit;font-size:12px}.paused .dot{background:#a0acc0}@media(max-width:800px){.help{display:none}}</style><div class="bar"><span class="dot"></span><span class="state"></span><span class="help"></span><button class="toggle"></button><button class="settings">设置</button></div>';
     status=shadow.querySelector('.state');
     shadow.querySelector('.toggle').addEventListener('click',()=>run('toggle'));
     shadow.querySelector('.settings').addEventListener('click',()=>chrome.runtime.sendMessage({type:'open-settings'}));
     document.documentElement.append(host);update();
   }
   function update(){
-    if(!host)return;host.hidden=!scoped()||(!config.showHud&&enabled);
+    syncPresentation();if(!host)return;host.hidden=!scoped()||(enabled?!config.showHud:!pausedHudVisible);
     shadow.querySelector('.bar').classList.toggle('paused',!enabled);
     const setText=(el,text)=>{if(el.textContent!==text)el.textContent=text;};
     status.style.color='#fff';setText(status,enabled?adapter.state()+' · '+Math.round(zoom*100)+'%':'会议模式已关闭');
     setText(shadow.querySelector('.help'),enabled?`${adapter.card()?'上下浏览字段 · 左右换记录':'上下换记录 · 左右换视图'}　${M.label(config.bindings.confirm)} 确定　${M.label(config.bindings.deleteBackward)} 返回`:`按 ${M.label(config.bindings.toggle)} 进入全屏 · ${adapter.viewName()}`);
     setText(shadow.querySelector('.toggle'),enabled?'退出会议':'进入全屏');
   }
-  async function zoomAction(direction){const r=await chrome.runtime.sendMessage({type:'zoom',direction});if(!r?.ok)throw new Error(r?.error||'缩放失败');zoom=r.zoom;notify('缩放 '+Math.round(zoom*100)+'%');}
+  async function zoomAction(direction){const request=++zoomRequest;const r=await chrome.runtime.sendMessage({type:'zoom',direction});if(!r?.ok)throw new Error(r?.error||'缩放失败');if(request!==zoomRequest)return;zoom=r.zoom;if(enabled)notify((direction>0&&zoom>=2.5?'已到最大缩放 ':direction<0&&zoom<=.5?'已到最小缩放 ':'缩放 ')+Math.round(zoom*100)+'%');}
   async function setEnabled(value,remember=true){
     if(changingMode)return {ok:false,error:'正在切换会议模式'};
     changingMode=true;
@@ -35,6 +46,8 @@
       const r=await chrome.runtime.sendMessage({type:'presentation',enabled:value});
       if(!r?.ok)throw new Error(r?.error||'无法切换全屏状态');
       enabled=value;
+      clearTimeout(timer);timer=null;clearTimeout(pausedTimer);pausedHudVisible=false;
+      if(!enabled)pausedNotice();
       if(remember)sessionStorage.setItem(modeKey(),String(value));
       if(!enabled){adapter.restoreHidden();adapter.clearFieldFocus();}
       update();
@@ -61,11 +74,15 @@
   async function run(action){
     if(!ready||!scoped())return {ok:false,error:'请打开飞书多维表格。'};
     if(action==='toggle')return setEnabled(!enabled);
+    if(action==='reloadPage'){
+      try{adapter.guardDraft();const r=await chrome.runtime.sendMessage({type:'reload-page'});if(!r?.ok)throw new Error(r?.error||'重新加载失败');return {ok:true};}
+      catch(e){notify(e.message,true);return {ok:false,error:e.message};}
+    }
     if(!enabled)return {ok:false,error:'会议模式已关闭'};
     // Zoom has its own ordered queue. Navigation and earlier zooms must not drop it.
-    if(['zoomIn','zoomOut','resetZoom'].includes(action)){
+    if(M.isZoom(action)){
       try{await zoomAction(action==='zoomIn'?1:action==='zoomOut'?-1:0);return {ok:true};}
-      catch(e){notify(e.message,true);return {ok:false,error:e.message};}
+      catch(e){if(enabled)notify(e.message,true);return {ok:false,error:e.message};}
     }
     if(busy)return {ok:false,error:'上一项操作尚未完成'};
     busy=true;
@@ -98,9 +115,12 @@
   window.addEventListener('compositionstart',()=>{composing=true;},true);
   window.addEventListener('compositionend',()=>{composing=false;compositionEnded=Date.now();},true);
   window.addEventListener('keydown',e=>{
-    if(!ready||!scoped()||!e.isTrusted||e.composedPath().includes(host))return;
+    if(!ready||!e.isTrusted)return;
     if(composing||e.isComposing||e.keyCode===229)return;
-    const action=M.actionFor(M.chord(e),config);if(!action||(!enabled&&action.id!=='toggle'))return;
+    const action=M.actionFor(M.chord(e),config);if(!action||(!enabled&&!['toggle','reloadPage'].includes(action.id))||!scoped())return;
+    // Volume keys bypass field/popup layout inspection and remain usable on HUD buttons.
+    if(M.isZoom(action.id)){e.preventDefault();e.stopImmediatePropagation();void run(action.id);return;}
+    if(e.composedPath().includes(host))return;
     const context=adapter.inputContext(e);
     const policy=M.inputPolicy(action,M.chord(e),context,{native:config.nativeBindings[action.id],popup:adapter.editorPopupOpen(),emptyInput:action.id==='deleteBackward'&&adapter.inputIsEmpty(),repeat:e.repeat});
     if(policy==='pass'||policy==='native')return;
@@ -122,7 +142,7 @@
   });
   async function init(){
     try{config=M.config((await chrome.storage.local.get('config')).config);}catch{config=M.config();}
-    ready=true;mount();
+    ready=true;pausedNotice();mount();
     try{const r=await chrome.runtime.sendMessage({type:'get-zoom'});if(r.ok)zoom=r.zoom;}catch{}
     // Observe page transitions without repeatedly searching or touching application data.
     let scheduled=false;

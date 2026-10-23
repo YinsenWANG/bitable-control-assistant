@@ -33,9 +33,9 @@
     const fields=[...card.querySelectorAll(FIELD)].filter(shown).filter(e=>!e.parentElement.closest(FIELD));
     const stops=[];
     for(const field of fields){
-      const links=[...field.querySelectorAll('a[href]')].filter(e=>shown(e)&&/^https?:\/\//i.test(e.href));
-      // A URL field has one stop per link. Rich text retains a field stop for reading/editing.
-      if(!field.querySelector('.bitable-card-edit-cell-editor-Url')||!links.length)stops.push({field,element:field,kind:'field'});
+      const links=[...field.querySelectorAll('.bitable-card-edit-cell-editor-Url a[href]')].filter(e=>shown(e)&&/^https?:\/\//i.test(e.href));
+      // Only a typed hyperlink field creates link stops; prose stays one field.
+      if(!links.length)stops.push({field,element:field,kind:'field'});
       for(const element of links)stops.push({field,element,kind:'link'});
     }
     const button=card.querySelector('.bitable-discussion-add-button');

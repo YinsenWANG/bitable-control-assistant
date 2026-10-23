@@ -18,8 +18,9 @@ test('ten rapid volume presses accumulate ten zoom steps despite a slow browser'
   assert.equal(f.values.get(1),2);assert.equal(f.settingsCalls.length,1);assert.equal(f.writes.length,1);
 });
 test('presses arriving while a zoom is in flight are retained, with no busy-drop',async()=>{
-  const f=fixture();const pending=[f.queue.enqueue(1,1,10)];
-  await delay(8);
+  const f=fixture();let started;const firstWrite=new Promise(resolve=>{started=resolve;});const write=f.api.setZoom;f.api.setZoom=(...args)=>{started();return write(...args);};
+  const pending=[f.queue.enqueue(1,1,10)];
+  await firstWrite;
   for(let i=0;i<7;i++)pending.push(f.queue.enqueue(1,1,10));
   await Promise.all(pending);assert.equal(f.values.get(1),1.8);assert.equal(f.writes.length,2);
 });
@@ -40,4 +41,15 @@ test('a rejected browser operation clears the queue so the next key can retry',a
   const first=await Promise.allSettled([f.queue.enqueue(1,1,10),f.queue.enqueue(1,1,10)]);
   assert.ok(first.every(x=>x.status==='rejected'));fail=false;
   await f.queue.enqueue(1,1,10);assert.equal(f.values.get(1),1.1);
+});
+test('a short batching window keeps mixed rapid presses while avoiding repeated page relayouts',async()=>{
+  const f=fixture(),directions=[1,1,1,-1,1,0,-1,1,1],pending=[];
+  for(const direction of directions){pending.push(f.queue.enqueue(1,direction,10));await delay(1);}
+  await Promise.all(pending);assert.equal(f.values.get(1),1.1);assert.equal(f.writes.length,1);
+});
+test('temporary Chrome tab-edit failures retry the same target without losing queued volume presses',async()=>{
+  const f=fixture();let calls=0;const write=f.api.setZoom;
+  f.api.setZoom=async(...args)=>{if(++calls<3)throw new Error('Tabs cannot be edited right now (user may be dragging a tab).');return write(...args);};
+  await Promise.all(Array.from({length:8},()=>f.queue.enqueue(1,1,10)));
+  assert.equal(f.values.get(1),1.8);assert.equal(calls,3);
 });
