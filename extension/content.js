@@ -23,7 +23,7 @@
   }
   function mount(){
     if(host?.isConnected||!document.documentElement)return;
-    host=document.createElement('div');host.id='fmr-hud';host.style.cssText='position:fixed;z-index:2147483647;bottom:12px;left:50%;transform:translateX(-50%);max-width:calc(100vw - 24px);';
+    host=document.createElement('div');host.id='fmr-hud';host.dataset.fmrVersion=chrome.runtime.getManifest().version;host.style.cssText='position:fixed;z-index:2147483647;bottom:12px;left:50%;transform:translateX(-50%);max-width:calc(100vw - 24px);';
     shadow=host.attachShadow({mode:'closed'});
     shadow.innerHTML='<style>:host{all:initial;font:14px -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}:host([hidden]){display:none!important}*{box-sizing:border-box}.bar{display:flex;align-items:center;gap:14px;background:#111e35f2;color:white;padding:11px 16px;border:1px solid #ffffff35;border-radius:14px;box-shadow:0 8px 26px #0003;white-space:nowrap;max-width:100%;}.dot{width:8px;height:8px;background:#4ade9c;border-radius:50%;flex:none}.state{font-weight:650}.help{font-size:12px;opacity:.75;overflow:hidden;text-overflow:ellipsis}button{background:#ffffff16;border:1px solid #ffffff32;border-radius:7px;color:white;padding:5px 8px;cursor:pointer;font:inherit;font-size:12px}.paused .dot{background:#a0acc0}@media(max-width:800px){.help{display:none}}</style><div class="bar"><span class="dot"></span><span class="state"></span><span class="help"></span><button class="toggle"></button><button class="settings">设置</button></div>';
     status=shadow.querySelector('.state');
@@ -50,7 +50,7 @@
       enabled=value;
       clearTimeout(timer);timer=null;clearTimeout(pausedTimer);pausedHudVisible=false;
       if(!enabled)pausedNotice();
-      if(remember)sessionStorage.setItem(modeKey(),String(value));
+      if(remember)M.pageSession(modeKey(),String(value));
       if(!enabled){adapter.restoreHidden();adapter.clearFieldFocus();}
       update();
       try{if(enabled)await adapter.collapseSidebarForMeeting();else await adapter.restoreMeetingSidebar();}catch(e){notify(e.message,true);}
@@ -66,10 +66,13 @@
       seenDocument=null;update();return;
     }
     const identity=modeKey();
-    if(seenDocument===identity)return;
+    if(seenDocument===identity){
+      if(enabled&&!adapter.meetingSidebar){try{await adapter.collapseSidebarForMeeting();}catch(e){notify(e.message,true);}}
+      return;
+    }
     seenDocument=identity;
     if(enabled)await setEnabled(false,false);
-    const remembered=sessionStorage.getItem(identity);
+    const remembered=M.pageSession(identity);
     if(remembered==='true'||(remembered===null&&config.autoEnable))await setEnabled(true,false);
     update();
   }
@@ -163,7 +166,17 @@
     let scheduled=false;
     new MutationObserver(()=>{if(scheduled)return;scheduled=true;setTimeout(()=>{scheduled=false;if(!host?.isConnected)mount();void syncPage();if(!timer)update();},250);}).observe(document.body,{childList:true,subtree:true});
     window.addEventListener('popstate',()=>void syncPage());
-    window.addEventListener('pagehide',()=>{if(enabled)void chrome.runtime.sendMessage({type:'presentation',enabled:false}).catch(()=>{});});
+    window.addEventListener('pagehide',()=>{
+      heldDeletes.clear();adapter.cancelEmptyReturn();
+      if(enabled)void chrome.runtime.sendMessage({type:'presentation',enabled:false}).catch(()=>{});
+    });
+    // A BFCache restore resumes the old script without rerunning init. Rejoin
+    // the background meeting session that pagehide released, preserving drafts.
+    window.addEventListener('pageshow',e=>{
+      if(!e.persisted)return;
+      heldDeletes.clear();adapter.cancelEmptyReturn();
+      if(enabled&&scoped())void setEnabled(true,false);else void syncPage();
+    });
     await syncPage();update();
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});else init();

@@ -20,7 +20,7 @@
 
 ## 三步开始
 
-1. 在 [Releases](https://github.com/YinsenWANG/bitable-control-assistant/releases/latest) 下载 `bitable-control-assistant-1.4.1-chrome.zip` 并解压。Chrome 打开 `chrome://extensions`，开启开发者模式，加载含 `manifest.json` 的文件夹。
+1. 在 [Releases](https://github.com/YinsenWANG/bitable-control-assistant/releases/latest) 下载 `bitable-control-assistant-1.4.2-chrome.zip` 并解压。Chrome 打开 `chrome://extensions`，开启开发者模式，加载含 `manifest.json` 的文件夹。
 2. 在扩展设置页查看组合键，将遥控器映射为相同组合。Home 与电源由 **Chrome 扩展快捷键**管理，其余动作在扩展里录入；每项都可复制键值。
 3. 打开任意有权限的飞书多维表格并刷新，按 TV（默认 **Control + Shift + 9**）进入会议。
 
@@ -83,7 +83,7 @@ Mac 想完全隐藏地址栏与标签页：在 Chrome「显示」菜单取消「
 
 ## 版本、反馈与开发
 
-当前版本 **v1.4.1**：正式更名为「多维表格控制助手」；空输入框改为双击返回确认，缩放保留自定义步长并增加原生开关。[发布记录](https://github.com/YinsenWANG/bitable-control-assistant/releases/tag/v1.4.1) · [完整更新记录](CHANGELOG.md) · [报告问题](https://github.com/YinsenWANG/bitable-control-assistant/issues)
+当前版本 **v1.4.2**：修复会议刷新、浏览器返回后的恢复；完整还原原侧栏状态，并补强页面消息校验和本地存储容错。[发布检查报告](docs/AUDIT-v1.4.2.md)。[发布记录](https://github.com/YinsenWANG/bitable-control-assistant/releases/tag/v1.4.2) · [完整更新记录](CHANGELOG.md) · [报告问题](https://github.com/YinsenWANG/bitable-control-assistant/issues)
 
 反馈时请提供版本、操作系统、实际组合键、列表或详情状态及复现步骤；公开反馈中请勿粘贴内部表格链接、私人记录或凭据。
 
@@ -96,6 +96,6 @@ npm run check
 npm run package
 ```
 
-源码的 `extension/` 可直接加载；`dist/` 生成可上传商店的 ZIP。77 项自动检查和真实使用者验收范围见[验证记录](docs/TESTING.md)。发布插图源文件位于 `demo/`，不打入运行包。
+源码的 `extension/` 可直接加载；`dist/` 生成可上传商店的 ZIP。89 项自动检查和真实使用者验收范围见[验证记录](docs/TESTING.md)。发布插图源文件位于 `demo/`，不打入运行包。
 
 MIT 开源。此项目独立开发，与飞书及其运营方没有隶属关系。

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "多维表格控制助手",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "为飞书多维表格提供可自定义的会议遥控快捷键：浏览记录与字段、操作链接、输入评论和全屏演示。",
   "minimum_chrome_version": "111",
   "permissions": [
@@ -12,6 +12,9 @@
   ],
   "background": {
     "service_worker": "background.js"
+  },
+  "content_security_policy": {
+    "extension_pages": "default-src 'self'; script-src 'self'; object-src 'none'; connect-src 'none'; base-uri 'none'; form-action 'none';"
   },
   "options_page": "options.html",
   "action": {

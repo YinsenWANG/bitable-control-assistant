@@ -1,4 +1,4 @@
-# 审核测试说明 · v1.4.1
+# 审核测试说明 · v1.4.2
 
 ## 发布者提交前补充
 
@@ -18,7 +18,9 @@ Bitable Control Assistant is an independent extension for presenting Feishu Base
 6. On a normal website such as GitHub, press Control+Shift+8. The current tab should reload even though the extension has no host permission or content script on that website. This command also works when meeting mode is off. It uses native browser reload behavior; handle unsaved content first.
 7. Back in the Base, press PageDown (the default Menu binding) to open comments and focus the editor. Enter harmless text only in the dedicated test table. Arrow keys should move the caret; Backspace deletes text. Press PageDown to collapse and reopen comments, retaining the draft. With an empty editor, press and release Backspace twice within 500 ms to leave input. A single press or two slow presses should retain input focus. Subsequent separate presses collapse comments, then close the card. Deleting the final character does not count toward this double press. Holding Backspace must not cascade through these levels. Enter sends a comment when the comment editor is ready; only test sending in the dedicated table.
 8. With native zoom switches off (the default), press Control+Shift+Equal ten times to increase zoom, then Control+Shift+Minus ten times to reduce it. Start at 100% with a 10% step: expect 200%, then 100%. Each press adds or removes the configured step; supported range is 50–250%. Optionally enable native zoom in settings and map Command+Equal / Command+Minus on macOS (Control on Windows): Chrome handles those keys and its own zoom levels, without using the configured step.
-9. Exit meeting mode with Control+Shift+9. The header, original sidebar state and extension-owned window state should restore. The bottom hint disappears after three seconds.
+9. While meeting mode is active, reload the Base and wait for the grid to finish loading. Meeting mode should resume, including the hidden header and collapsed sidebar. Then exit meeting mode with Control+Shift+9. The header, original sidebar state and extension-owned window state should restore. The bottom hint disappears after three seconds.
+Also verify restoration in both directions: start once with the sidebar expanded and once collapsed. If you manually change it during a meeting, exit should restore the pre-meeting state.
+
 10. In settings, use a Copy button, record a custom shortcut, and optionally test a “使用原生快捷键” switch. Home and Power are managed separately by Chrome and are not changed by extension configuration import/export.
 
 The extension includes all executable code locally. It has no developer backend, analytics or microphone permission. The only host access is Feishu. Presentation illustrations use fictional data and are not screenshots of a customer's private Base.

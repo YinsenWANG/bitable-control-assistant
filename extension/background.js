@@ -111,7 +111,7 @@ chrome.commands.onCommand.addListener(async (command,commandTab)=>{
       return;
     }
     if(command!=='toggle-meeting')return;
-    const [tab]=await chrome.tabs.query({active:true,currentWindow:true});
+    const tab=await activeCommandTab(commandTab);
     if(!tab?.id)throw new Error('请先打开一个多维表格。');
     const response=await chrome.tabs.sendMessage(tab.id,{type:'meeting-action',action:'toggle'});
     if(!response?.ok)throw new Error(response?.error||'请刷新多维表格页面。');

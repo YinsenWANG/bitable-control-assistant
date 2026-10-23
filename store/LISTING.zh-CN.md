@@ -1,4 +1,4 @@
-# Chrome Web Store 逐项填写资料 · v1.4.1
+# Chrome Web Store 逐项填写资料 · v1.4.2
 
 与 [提交指南](SUBMISSION_GUIDE.zh-CN.md) 配合使用。下面每项内容可以直接复制到对应字段。
 

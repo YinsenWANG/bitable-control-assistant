@@ -113,6 +113,11 @@ test('Power uses the invocation tab even if the active window changes, and needs
   await f.command('reload-current-tab',{id:1});
   assert.deepEqual(f.state.calls.filter(x=>x[0]==='reload'),[['reload',1]]);
 });
+test('the optional browser TV command targets its invocation tab after a focus change',async()=>{
+  const f=fixture();f.chrome.tabs.query=async()=>{throw new Error('must not query');};
+  await f.command('toggle-meeting',{id:1});
+  assert.deepEqual(f.state.calls.filter(x=>x[0]==='message'),[['message',1,{type:'meeting-action',action:'toggle'}]]);
+});
 test('Power reports a missing tab or reload failure without switching pages',async()=>{
   const f=fixture();f.chrome.tabs.query=async()=>[];
   await f.command('reload-current-tab');

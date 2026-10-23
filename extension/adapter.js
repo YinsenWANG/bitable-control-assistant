@@ -20,7 +20,15 @@
   }
   function paint(){return new Promise(resolve=>{
     const id=crypto.randomUUID();let timer;
-    const listener=e=>{try{const data=JSON.parse(e.detail);if(data.id!==id)return;clearTimeout(timer);document.removeEventListener('fmr:canvas-result',listener);resolve(data);}catch{}};
+    const listener=e=>{try{
+      // MAIN-world events are page-controlled input, even on a supported host.
+      if(typeof e.detail!=='string'||e.detail.length>2000000)return;
+      const data=JSON.parse(e.detail);
+      if(data?.id!==id||!Array.isArray(data.rows)||data.rows.length>1000||!Number.isSafeInteger(data.paintCount)||data.paintCount<0||data.paintCount>9000)return;
+      if(!data.rows.every(r=>r&&typeof r.number==='string'&&/^\d{1,6}$/.test(r.number)&&typeof r.title==='string'&&r.title.length>0&&r.title.length<=1500&&Number.isFinite(r.x)&&Number.isFinite(r.y)))return;
+      clearTimeout(timer);document.removeEventListener('fmr:canvas-result',listener);
+      resolve({rows:data.rows.map(({number,title,x,y})=>({number,title,x,y})),paintCount:data.paintCount});
+    }catch{}};
     document.addEventListener('fmr:canvas-result',listener);
     timer=setTimeout(()=>{document.removeEventListener('fmr:canvas-result',listener);resolve({rows:[],paintCount:0});},300);
     document.dispatchEvent(new CustomEvent('fmr:canvas-query',{detail:JSON.stringify({id})}));
@@ -53,7 +61,7 @@
     async selectRow(row){
       const canvas=this.canvas();if(!canvas)throw new Error('当前视图不是支持的表格视图。');
       const r=canvas.getBoundingClientRect();
-      if(row.x<r.left||row.x>r.right||row.y<r.top||row.y>r.bottom)throw new Error('表格布局已变化，请再按一次。');
+      if(!Number.isFinite(row?.x)||!Number.isFinite(row?.y)||row.x<r.left||row.x>r.right||row.y<r.top||row.y>r.bottom)throw new Error('表格布局已变化，请再按一次。');
       const before=this.selected()?.id;pointer(canvas,row.x,row.y);
       const selected=await waitFor(()=>{const s=this.selected();return s&&(s.id!==before||Math.abs(s.y-row.y)<24)?s:null;},700);
       if(!selected)throw new Error('未能选中记录；请刷新飞书页面后重试。');
@@ -172,12 +180,49 @@
     }
     async collapseSidebarForMeeting(){
       if(this.meetingSidebar)return;
-      const expanded=this.sidebarExpanded();this.meetingSidebar={path:location.pathname,expanded};
-      if(expanded===true)await this.toggleSidebar();
+      // An opener can be rendered before the real sidebar. Its temporary state
+      // must not be treated as the completed sidebar's initial state.
+      if(!document.querySelector('#bitable-sidebar-wrapper'))return;
+      const expanded=this.sidebarExpanded(),key='fmr-sidebar:'+location.pathname,remembered=M.pageSession(key);
+      // Base can render its grid before the sidebar controls. Leave setup
+      // pending until those controls mount instead of remembering "no sidebar".
+      if(expanded===null||(expanded&&!document.querySelector('.bitable-sidebar-close-icon-wrap')))return;
+      const original=this.meetingSidebar={path:location.pathname,expanded:remembered==='true'?true:remembered==='false'?false:expanded};
+      M.pageSession(key,String(original.expanded));
+      // Hydration can replace the sidebar or restore its saved open state after
+      // a successful first click. Require a short stable collapse, with a bound
+      // on retries. A real user's interaction ends this startup reconciliation.
+      let interrupted=false,stableSince=0,lastRoot=null;
+      const interrupt=e=>{if(e.isTrusted)interrupted=true;};
+      window.addEventListener('pointerdown',interrupt,true);
+      window.addEventListener('keydown',interrupt,true);
+      try{
+        const end=Date.now()+4000;
+        while(Date.now()<end&&this.meetingSidebar===original&&!interrupted){
+          const root=document.querySelector('#bitable-sidebar-wrapper');
+          if(root&&this.sidebarExpanded()===false){
+            if(root!==lastRoot||!stableSince)stableSince=Date.now();
+            if(Date.now()-stableSince>=500)return;
+          }else{
+            stableSince=0;
+            const close=root&&document.querySelector('.bitable-sidebar-close-icon-wrap');
+            close?.click();
+          }
+          lastRoot=root;await sleep(100);
+        }
+        if(!interrupted&&this.meetingSidebar===original&&this.sidebarExpanded()!==false)
+          throw new Error('侧边栏尚未完成加载，可用侧边栏快捷键收起。');
+      }finally{
+        window.removeEventListener('pointerdown',interrupt,true);
+        window.removeEventListener('keydown',interrupt,true);
+      }
     }
     async restoreMeetingSidebar(){
       const original=this.meetingSidebar;this.meetingSidebar=null;
-      if(original?.path===location.pathname&&original.expanded===true&&this.sidebarExpanded()===false)await this.toggleSidebar();
+      if(original?.path!==location.pathname)return;
+      const current=this.sidebarExpanded();
+      if(typeof original.expanded==='boolean'&&typeof current==='boolean'&&current!==original.expanded)await this.toggleSidebar();
+      M.pageSession('fmr-sidebar:'+original.path,null);
     }
     async send(){
       if(this.sending)return;

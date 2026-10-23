@@ -58,13 +58,25 @@
   function target(value) {
     try {
       const u=new URL(value);
-      if(u.protocol!=='https:'||u.port||!(u.hostname==='feishu.cn'||u.hostname.endsWith('.feishu.cn')))return null;
+      if(u.protocol!=='https:'||u.port||u.username||u.password||!(u.hostname==='feishu.cn'||u.hostname.endsWith('.feishu.cn')))return null;
       const match=u.pathname.match(/^\/(base|wiki)\/([a-zA-Z0-9]+)\/?$/)||u.pathname.match(/^\/(share\/base\/(?:view|record))\/([a-zA-Z0-9]+)\/?$/);
       if(!match)return null;
       return {origin:u.origin,kind:match[1],id:match[2],table:u.searchParams.get('table'),view:u.searchParams.get('view')};
     }catch{return null;}
   }
   function sameDocument(a,b){const x=target(a),y=target(b);return !!x&&!!y&&x.origin===y.origin&&x.kind===y.kind&&x.id===y.id;}
+  // Page-session preferences survive reloads. Blocked website storage must not
+  // prevent the meeting from working; memory is enough for the current page.
+  const pageMemory=new Map();
+  function pageSession(key,value){
+    if(arguments.length>1){
+      pageMemory.set(key,value===null?null:String(value));
+      try{if(value===null)sessionStorage.removeItem(key);else sessionStorage.setItem(key,String(value));}catch{}
+      return;
+    }
+    if(pageMemory.has(key))return pageMemory.get(key);
+    try{return sessionStorage.getItem(key);}catch{return null;}
+  }
   function bindingConflict(a,b){return a!==b;}
   function config(input={}) {
     if(!input||typeof input!=='object'||Array.isArray(input))throw new Error('配置格式无效。');
@@ -119,7 +131,7 @@
     return 'run';
   }
   function keyDelay(action,context){if(['zoomIn','zoomOut','resetZoom'].includes(action.id))return 0;if(action.id==='deleteBackward')return 0;return action.repeat?160:350;}
-  const api={ACTIONS,DEFAULTS,NATIVE,DIRECTIONS,isZoom,nativeBinding,bindingFor,inputPolicy,chord,label,validateBinding,target,sameDocument,bindingConflict,config,actionFor,keyDelay};
+  const api={ACTIONS,DEFAULTS,NATIVE,DIRECTIONS,isZoom,nativeBinding,bindingFor,inputPolicy,chord,label,validateBinding,target,sameDocument,pageSession,bindingConflict,config,actionFor,keyDelay};
   if(typeof module!=='undefined'&&module.exports)module.exports=api;
   else globalThis.MeetingRemote=api;
 })();
