@@ -8,7 +8,7 @@
     ['confirm','确定 / 操作字段 / 发送评论','中间确定','Enter',false],
     ['deleteBackward','删除左侧文字 / 空输入框逐层返回','返回','Backspace',true],
     ['toggle','进入 / 退出全屏会议模式','TV','Control+Shift+Digit9',false],
-    ['reloadPage','重新加载当前页面','电源','Meta+KeyR',false],
+    ['reloadPage','刷新页面（备用）','可选','Meta+KeyR',false],
     ['toggleComments','展开并聚焦 / 收起评论','菜单','PageDown',false],
     ['toggleSidebar','展开 / 折叠侧边栏','可选独立动作','',false],
     ['zoomIn','放大','音量＋','Control+Shift+Equal',true],

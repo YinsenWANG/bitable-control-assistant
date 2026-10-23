@@ -50,6 +50,20 @@ test('changing bindings does not erase unsaved general settings',async()=>{
   assert.equal(saved.zoomStep,15);assert.equal(saved.autoEnable,true);
   d.window.close();
 });
+test('browser shortcuts display and copy Chrome assignments, and refresh after returning from settings',async()=>{
+  const d=dom(script('options.html')),w=d.window;let copied='',commands=[{name:'return-to-meeting',shortcut:'Ctrl+Shift+0'},{name:'reload-current-tab',shortcut:'Ctrl+Shift+8'}];
+  w.chrome={commands:{getAll:async()=>commands},storage:{local:{get:async()=>({})}},runtime:{sendMessage:async()=>({ok:true})}};
+  Object.defineProperty(w.navigator,'clipboard',{value:{writeText:async text=>{copied=text;}}});
+  w.eval(script('options.js'));await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(w.document.getElementById('reloadShortcut').textContent,'Ctrl+Shift+8');
+  await w.document.getElementById('copyReloadShortcut').onclick();assert.equal(copied,'Ctrl+Shift+8');
+  commands=[{name:'return-to-meeting',shortcut:'Ctrl+Shift+0'},{name:'reload-current-tab',shortcut:''}];
+  w.dispatchEvent(new w.Event('focus'));await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(w.document.getElementById('copyReloadShortcut').disabled,true);
+  assert.match(w.document.getElementById('reloadShortcut').textContent,/未设置/);
+  assert.equal(w.document.getElementById('copyMeetingShortcut').disabled,false);
+  d.window.close();
+});
 function canvasDom(){const d=dom('<canvas role="faster" width="2080" height="1014"></canvas>'),w=d.window;
   function Ctx(canvas){this.canvas=canvas;this.font='14px sans-serif';this.textAlign='left';this.textBaseline='alphabetic';this.globalAlpha=1;this.fillStyle='#fff';this.scale=2;}
   Object.assign(Ctx.prototype,{getTransform(){return {a:this.scale,b:0,c:0,d:this.scale,e:0,f:0}},measureText(s){return {width:s.length*8,actualBoundingBoxAscent:11,actualBoundingBoxDescent:3}},fillText(){},clearRect(){},fillRect(){},drawImage(){},reset(){}});

@@ -1,0 +1,4 @@
+﻿议题,状态,负责人,参考链接,说明
+明确演示目标,待讨论,项目组,https://github.com/YinsenWANG/feishu-meeting-remote,这是虚构的审核演示数据。可以在专用表格中测试输入和评论。
+验证导航与链接,进行中,测试组,https://github.com/YinsenWANG/feishu-meeting-remote,检查上下浏览字段、左右切换记录、确认打开超链接。
+记录会议结论,已完成,项目组,https://github.com/YinsenWANG/feishu-meeting-remote,使用菜单键打开评论。请勿在内部业务表中进行审核测试。

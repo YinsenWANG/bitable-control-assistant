@@ -93,9 +93,20 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
   })().then(respond,error=>respond({ok:false,error:error.message}));
   return true;
 });
-chrome.commands.onCommand.addListener(async command=>{
+chrome.commands.onCommand.addListener(async (command,commandTab)=>{
   try {
     if(command==='return-to-meeting'){await withSession(returnToMeeting);return;}
+    if(command==='reload-current-tab'){
+      // Chrome delivers this command across tabs without a content script or
+      // permission to read the destination website. Prefer the invocation tab
+      // so a focus change during an async query cannot reload another page.
+      const tab=Number.isInteger(commandTab?.id)&&commandTab.id>=0?commandTab:(await chrome.tabs.query({active:true,currentWindow:true}))[0];
+      if(!Number.isInteger(tab?.id)||tab.id<0)throw new Error('请先在 Chrome 中打开要刷新的标签页。');
+      await chrome.tabs.reload(tab.id);
+      await chrome.action.setBadgeText({text:''});
+      await chrome.action.setTitle({title:'飞书会议遥控器'});
+      return;
+    }
     if(command!=='toggle-meeting')return;
     const [tab]=await chrome.tabs.query({active:true,currentWindow:true});
     if(!tab?.id)throw new Error('请先打开一个多维表格。');

@@ -50,13 +50,20 @@
   $('export').onclick=()=>{try{const data=readForm();const url=URL.createObjectURL(new Blob([JSON.stringify({format:'feishu-meeting-remote',version:5,config:data},null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='飞书会议遥控器-按键配置.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(e){feedback(e.message,true);}};
   $('import').onclick=()=>$('importFile').click();
   $('importFile').onchange=async()=>{const file=$('importFile').files[0];if(!file)return;try{if(file.size>64000)throw new Error('配置文件过大');const obj=JSON.parse(await file.text());if(obj.format!=='feishu-meeting-remote'||![1,2,3,4,5].includes(obj.version))throw new Error('不是此扩展的配置文件');config=M.config(obj.config);recording=null;dirty=true;render();feedback('已导入，请检查后保存');}catch(e){feedback('导入失败：'+e.message,true);}finally{$('importFile').value='';}};
-  async function refreshGlobalShortcut(){
-    try{const commands=await chrome.commands.getAll();const value=commands.find(c=>c.name==='return-to-meeting')?.shortcut||'';$('meetingShortcut').textContent=value||'未设置，请点击下方按钮';$('copyMeetingShortcut').disabled=!value;$('copyMeetingShortcut').onclick=()=>copyValue(value);}
-    catch{$('meetingShortcut').textContent='请在 Chrome 扩展快捷键中设置';}
+  async function refreshGlobalShortcuts(){
+    const rows=[['return-to-meeting','meetingShortcut','copyMeetingShortcut'],['reload-current-tab','reloadShortcut','copyReloadShortcut']];
+    try{
+      const commands=await chrome.commands.getAll();
+      for(const [name,display,button] of rows){
+        const value=commands.find(c=>c.name===name)?.shortcut||'';
+        $(display).textContent=value||'未设置，请点击下方按钮';
+        $(button).disabled=!value;$(button).onclick=()=>copyValue(value);
+      }
+    }catch{for(const [,display,button] of rows){$(display).textContent='请在 Chrome 扩展快捷键中设置';$(button).disabled=true;}}
   }
-  $('globalShortcut').onclick=()=>chrome.runtime.sendMessage({type:'open-keyboard-settings'}).catch(e=>feedback(e.message,true));
-  window.addEventListener('focus',refreshGlobalShortcut);
-  void refreshGlobalShortcut();
+  for(const id of ['globalShortcut','reloadGlobalShortcut'])$(id).onclick=()=>chrome.runtime.sendMessage({type:'open-keyboard-settings'}).catch(e=>feedback(e.message,true));
+  window.addEventListener('focus',refreshGlobalShortcuts);
+  void refreshGlobalShortcuts();
   window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue='';}});
   chrome.storage.local.get('config').then(data=>{try{config=M.config(data.config);}catch(e){feedback(e.message,true);}render();});
 })();

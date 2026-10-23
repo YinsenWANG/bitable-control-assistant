@@ -36,7 +36,7 @@ function fixture(state){
   vm.runInContext(fs.readFileSync(path.join(root,'background.js'),'utf8'),context);
   const sender=id=>({tab:clone(state.tabs.get(id)),url:state.tabs.get(id)?.url});
   const message=(value,from=sender(1))=>new Promise(resolve=>chrome.runtime.onMessage.listeners[0](value,from,resolve));
-  const command=value=>chrome.commands.onCommand.listeners[0](value);
+  const command=(value,tab)=>chrome.commands.onCommand.listeners[0](value,tab);
   return {state,chrome,sender,message,command};
 }
 test('TV enters fullscreen, and Home returns to the latest meeting tab from another page',async()=>{
@@ -100,6 +100,28 @@ test('custom page reload is available without meeting mode and limited to its ow
   assert.deepEqual(f.state.calls.filter(x=>x[0]==='reload'),[['reload',1]]);
   assert.equal((await f.message({type:'reload-page'},f.sender(2))).ok,false);
   assert.equal(f.state.calls.filter(x=>x[0]==='reload').length,1);
+});
+test('Power reloads a non-Feishu active tab without a meeting or content access',async()=>{
+  const f=fixture();f.state.tabs.get(2).url='https://github.com/example/demo';
+  await f.command('reload-current-tab');
+  assert.deepEqual(f.state.calls.filter(x=>x[0]==='reload'),[['reload',2]]);
+  assert.deepEqual(f.state.session,{});
+  assert.equal(f.state.calls.some(x=>x[0]==='create'||x[0]==='window'),false);
+});
+test('Power uses the invocation tab even if the active window changes, and needs no URL',async()=>{
+  const f=fixture();f.chrome.tabs.query=async()=>{throw new Error('must not query');};
+  await f.command('reload-current-tab',{id:1});
+  assert.deepEqual(f.state.calls.filter(x=>x[0]==='reload'),[['reload',1]]);
+});
+test('Power reports a missing tab or reload failure without switching pages',async()=>{
+  const f=fixture();f.chrome.tabs.query=async()=>[];
+  await f.command('reload-current-tab');
+  assert.equal(f.state.calls.some(x=>x[0]==='reload'),false);
+  assert.match(f.state.calls.find(x=>x[0]==='title')[1].title,/要刷新/);
+  f.state.calls=[];f.chrome.tabs.reload=async()=>{throw new Error('Tab closed');};
+  await f.command('reload-current-tab',{id:2});
+  assert.equal(f.state.calls.find(x=>x[0]==='badge')[1].text,'!');
+  assert.equal(f.state.calls.find(x=>x[0]==='title')[1].title,'Tab closed');
 });
 test('field links open a new tab and retain the meeting origin; unsafe URLs are rejected',async()=>{
   const f=fixture();await f.message({type:'presentation',enabled:true});
