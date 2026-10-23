@@ -39,7 +39,7 @@ function fixture(state){
   const command=value=>chrome.commands.onCommand.listeners[0](value);
   return {state,chrome,sender,message,command};
 }
-test('TV enters fullscreen, and power returns to the latest meeting tab from another page',async()=>{
+test('TV enters fullscreen, and Home returns to the latest meeting tab from another page',async()=>{
   const f=fixture();assert.equal((await f.message({type:'presentation',enabled:true})).ok,true);
   assert.equal(f.state.windows.get(10).state,'fullscreen');
   await f.command('return-to-meeting');
@@ -70,14 +70,20 @@ test('two meeting tabs share fullscreen ownership without an early restore',asyn
   await f.message({type:'presentation',enabled:false});assert.equal(f.state.windows.get(10).state,'fullscreen');
   await f.message({type:'presentation',enabled:false},f.sender(2));assert.equal(f.state.windows.get(10).state,'normal');
 });
-test('returning reopens a missing meeting page without replacing unrelated content',async()=>{
+test('Home never replaces or reopens an unrelated page after the meeting has ended',async()=>{
   const f=fixture();await f.message({type:'presentation',enabled:true});
   f.state.tabs.get(1).url='https://example.org/unsaved-form';
-  await f.command('return-to-meeting');
+  assert.equal((await f.message({type:'return-to-meeting'},{})).ok,false);
   assert.equal(f.state.tabs.get(1).url,'https://example.org/unsaved-form');
-  const created=f.state.calls.find(x=>x[0]==='create');assert.equal(created[1].url,url);
-  f.state.tabs.delete(created[1].id);await f.command('return-to-meeting');
-  assert.equal(f.state.calls.filter(x=>x[0]==='create').length,2);
+  assert.equal(f.state.calls.filter(x=>x[0]==='create').length,0);
+});
+test('Home falls back to a still-active meeting when the latest meeting has ended',async()=>{
+  const f=fixture();f.state.tabs.get(2).url='https://second.feishu.cn/base/Base456';
+  await f.message({type:'presentation',enabled:true});await f.message({type:'presentation',enabled:true},f.sender(2));
+  await f.message({type:'presentation',enabled:false},f.sender(2));
+  await f.command('return-to-meeting');assert.equal(f.state.tabs.get(1).active,true);
+  await f.message({type:'presentation',enabled:false});
+  assert.equal((await f.message({type:'return-to-meeting'},{})).ok,false);
 });
 test('ordinary pages cannot enter meeting mode; a navigating tab can release its window',async()=>{
   const f=fixture();assert.equal((await f.message({type:'presentation',enabled:true},f.sender(2))).ok,false);
@@ -85,7 +91,7 @@ test('ordinary pages cannot enter meeting mode; a navigating tab can release its
   f.state.tabs.get(1).url='https://acme.feishu.cn/docx/Doc123';
   assert.equal((await f.message({type:'presentation',enabled:false})).ok,true);assert.equal(f.state.windows.get(10).state,'normal');
 });
-test('power without a previous meeting produces a useful error and opens nothing',async()=>{
+test('Home without an active meeting produces a useful error and opens nothing',async()=>{
   const f=fixture();const result=await f.message({type:'return-to-meeting'},{});
   assert.equal(result.ok,false);assert.match(result.error,/先在/);assert.equal(f.state.tabs.size,2);
 });

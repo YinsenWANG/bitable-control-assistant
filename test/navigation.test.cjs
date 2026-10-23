@@ -37,18 +37,18 @@ test('long field text scrolls to its boundary before moving to the next field',(
   a.moveField(1);a.moveField(1);assert.equal(area.scrollTop,200);assert.equal(a.currentFieldStop().field,long);
   a.moveField(1);assert.equal(a.currentFieldStop().kind,'link');a.moveField(-1);a.moveField(-1);assert.equal(area.scrollTop,120);d.window.close();
 });
-test('OK enters a field, Home returns focus to that field without modifying its content',async()=>{
+test('OK enters a field, Back exits input to that field without modifying its content',async()=>{
   const {d,a}=fixture();a.moveField(1);await a.confirm();const editor=d.window.document.activeElement;assert.equal(editor.getAttribute('contenteditable'),'true');
   await a.back();assert.equal(d.window.document.activeElement,a.currentFieldStop().field);assert.equal(editor.textContent,'示例');d.window.close();
 });
 test('raw arrows including selection chords remain native in all text editors',()=>{
   for(const context of ['comment','other','grid-edit'])for(const id of ['navigateUp','navigateDown','navigateLeft','navigateRight'])for(const prefix of ['','Shift+','Control+Shift+'])assert.equal(M.inputPolicy(action(id),prefix+'ArrowDown',context),'pass');
 });
-test('custom direction chords move the caret; Home and deletion remain separate in input mode',()=>{
+test('custom direction chords move the caret; explicit return and context-sensitive deletion work in input mode',()=>{
   for(const context of ['comment','other','grid-edit']){
     assert.equal(M.inputPolicy(action('navigateLeft'),'Alt+KeyH',context),'caret');
-    assert.equal(M.inputPolicy(action('home'),'Control+Shift+Digit0',context),'run');
-    assert.equal(M.inputPolicy(action('home'),'Control+Shift+Digit0',context,{popup:true}),'run');
+    assert.equal(M.inputPolicy(action('back'),'Escape',context),'run');
+    assert.equal(M.inputPolicy(action('back'),'Escape',context,{popup:true}),'run');
     assert.equal(M.inputPolicy(action('deleteBackward'),'Backspace',context),'pass');
     assert.equal(M.inputPolicy(action('previousRecord'),'Alt+KeyP',context),'pass');
   }
@@ -62,12 +62,12 @@ test('custom cursor motion in textarea supports lines, emoji and existing select
   e.setSelectionRange(0,4);a.moveCaret('right');assert.equal(e.selectionStart,4);d.window.close();
 });
 test('native opt-in uses the documented key and restores the custom binding when disabled',()=>{
-  const c=M.config({schemaVersion:3,bindings:{toggleSidebar:'Alt+KeyB'},nativeBindings:{toggleSidebar:true}});
+  const c=M.config({schemaVersion:4,bindings:{toggleSidebar:'Alt+KeyB'},nativeBindings:{toggleSidebar:true}});
   assert.equal(M.bindingFor('toggleSidebar',c),M.nativeBinding('toggleSidebar'));
   assert.equal(M.actionFor('Alt+KeyB',c),undefined);
   assert.equal(M.inputPolicy(action('toggleSidebar'),M.nativeBinding('toggleSidebar'),'none',{native:true}),'native');
   c.nativeBindings.toggleSidebar=false;assert.equal(M.bindingFor('toggleSidebar',M.config(c)),'Alt+KeyB');
-  assert.throws(()=>M.config({schemaVersion:3,bindings:{home:M.nativeBinding('toggleSidebar')},nativeBindings:{toggleSidebar:true}}),/相同/);
+  assert.throws(()=>M.config({schemaVersion:4,bindings:{back:M.nativeBinding('toggleSidebar')},nativeBindings:{toggleSidebar:true}}),/相同/);
 });
 test('every shortcut can be copied and native toggle preserves unsaved settings',async()=>{
   const d=new JSDOM(read('options.html'),{url:'https://example.org',runScripts:'outside-only'}),w=d.window;let copied,saved;
@@ -75,7 +75,7 @@ test('every shortcut can be copied and native toggle preserves unsaved settings'
   w.chrome={storage:{local:{get:async()=>({}),set:async x=>{saved=x.config;}}},commands:{getAll:async()=>[{name:'return-to-meeting',shortcut:'Ctrl+Shift+8'}]}};
   w.eval(read('shared.js'));w.eval(read('options.js'));await new Promise(r=>setImmediate(r));
   assert.equal(w.document.querySelectorAll('#bindings .copy-btn').length,M.ACTIONS.length);
-  w.document.querySelector('[data-action="home"] .copy-btn').click();await new Promise(r=>setImmediate(r));assert.equal(copied,'Control+Shift+Digit0');
+  w.document.querySelector('[data-action="toggleComments"] .copy-btn').click();await new Promise(r=>setImmediate(r));assert.equal(copied,'PageDown');
   w.document.getElementById('zoomStep').value='15';w.document.querySelector('[data-action="toggleSidebar"] input').click();
   w.document.querySelector('[data-action="toggleSidebar"] .copy-btn').click();await new Promise(r=>setImmediate(r));assert.equal(copied,w.MeetingRemote.nativeBinding('toggleSidebar'));
   await w.document.getElementById('save').onclick();assert.equal(saved.zoomStep,15);assert.equal(saved.nativeBindings.toggleSidebar,true);
@@ -92,5 +92,60 @@ test('Feishu grid ghost editor is not text input; Backspace never clears a selec
   assert.equal(a.inputContext({target:e}),'grid');a.deleteBackward();assert.equal(deletes,0);
   assert.equal(M.inputPolicy(action('deleteBackward'),'Backspace','grid'),'run');
   grid.firstElementChild.classList.add('editor-component--with-input-toolbar');e.getBoundingClientRect=()=>({width:554,height:50});
-  assert.equal(a.inputContext({target:e}),'grid-edit');a.deleteBackward();assert.equal(deletes,1);d.window.close();
+  e.textContent='正在编辑';assert.equal(a.inputContext({target:e}),'grid-edit');a.deleteBackward();assert.equal(deletes,1);d.window.close();
+});
+test('a focused field link inside Feishu rich text is navigation, while its editor remains editable',async()=>{
+  const {d,w,a,messages}=fixture(),url=d.window.document.querySelector('.bitable-card-edit-cell-editor-Url');
+  const editor=w.document.createElement('div');editor.contentEditable='true';editor.setAttribute('contenteditable','true');editor.tabIndex=0;
+  editor.append(...url.childNodes);url.append(editor);
+  a.moveField(1);a.moveField(1);a.moveField(1);const link=a.currentFieldStop().element;
+  assert.equal(w.document.activeElement,a.currentFieldStop().field);
+  assert.equal(link.tagName,'A');assert.equal(link.isContentEditable,true);
+  assert.equal(a.inputContext({target:link}),'none');
+  assert.equal(M.inputPolicy(action('confirm'),'Enter',a.inputContext({target:link})),'run');
+  let deletes=0,backs=0;w.document.execCommand=()=>{deletes++;};a.back=async()=>{backs++;};await a.deleteBackward();assert.equal(deletes,0);assert.equal(backs,1);
+  await a.confirm();assert.equal(messages[0].url,'https://example.org/help');
+  a.clearFieldFocus();assert.equal(link.getAttribute('tabindex'),null);assert.equal(url.closest('label').getAttribute('tabindex'),null);
+  editor.focus();assert.equal(a.inputContext({target:editor}),'other');d.window.close();
+});
+function clippedOptions(w){
+  const box=w.document.createElement('div');box.className='b-select-dropdown-content';box.style.overflowY='hidden';box.style.overflowX='hidden';box.style.height='0px';
+  box.getBoundingClientRect=()=>({width:168,height:0,x:0,y:0});
+  box.innerHTML='<input aria-label="隐藏选项搜索"><div class="b-select-list" style="overflow-y:auto">隐藏选项</div>';
+  Object.defineProperties(box.lastElementChild,{clientHeight:{value:127},scrollHeight:{value:456}});
+  w.document.querySelector('.b-field-label__editor').prepend(box);return box;
+}
+test('collapsed native option lists do not consume field navigation keys',()=>{
+  const {d,w,a}=fixture(),box=clippedOptions(w);a.moveField(1);a.moveField(1);
+  assert.equal(a.currentFieldStop().field,a.fieldStops()[1].field);assert.equal(box.lastElementChild.scrollTop,0);d.window.close();
+});
+test('OK skips controls clipped by a collapsed ancestor and focuses the visible editor',async()=>{
+  const {d,w,a}=fixture();clippedOptions(w);a.moveField(1);await a.confirm();
+  assert.equal(w.document.activeElement.getAttribute('contenteditable'),'true');d.window.close();
+});
+test('empty input returns once per press, while holding deletion cannot exit multiple layers',()=>{
+  for(const context of ['comment','other','grid-edit']){
+    assert.equal(M.inputPolicy(action('deleteBackward'),'Backspace',context,{emptyInput:false,repeat:true}),'pass');
+    assert.equal(M.inputPolicy(action('deleteBackward'),'Backspace',context,{emptyInput:true}),'run');
+    assert.equal(M.inputPolicy(action('deleteBackward'),'Backspace',context,{emptyInput:true,repeat:true}),'block');
+    assert.equal(M.inputPolicy(action('toggleComments'),'PageDown',context,{popup:true}),'run');
+  }
+  assert.equal(M.inputPolicy(action('deleteBackward'),'Backspace','none',{repeat:true}),'block');
+});
+test('empty native editors return without deleting, and spaces or attachments remain input',async()=>{
+  const {d,w,a}=fixture(),editor=w.document.querySelector('[contenteditable]');
+  editor.textContent='\u200b';editor.focus();let deletes=0;w.document.execCommand=()=>{deletes++;};
+  assert.equal(a.inputIsEmpty(),true);await a.deleteBackward();assert.equal(deletes,0);
+  assert.equal(w.document.activeElement,a.currentFieldStop().field);assert.ok(a.card());
+  editor.textContent=' ';editor.focus();assert.equal(a.inputIsEmpty(),false);await a.deleteBackward();assert.equal(deletes,1);
+  editor.innerHTML='<img alt="attachment">';assert.equal(a.inputIsEmpty(),false);
+  const input=w.document.createElement('textarea');w.document.body.append(input);input.focus();assert.equal(a.inputIsEmpty(),true);
+  input.value='\n';assert.equal(a.inputIsEmpty(),false);d.window.close();
+});
+test('schema 3 menu key migrates to comments and Home is removed from page-local shortcuts',()=>{
+  const c=M.config({schemaVersion:3,bindings:{toggleSidebar:'Alt+KeyM',home:'Control+Shift+Digit0',zoomIn:'Alt+KeyZ'}});
+  assert.equal(c.schemaVersion,4);assert.equal(c.bindings.toggleComments,'Alt+KeyM');assert.equal(c.bindings.toggleSidebar,'');assert.equal(c.bindings.home,undefined);assert.equal(c.bindings.zoomIn,'Alt+KeyZ');
+  assert.deepEqual(M.config(c),c);
+  const native=M.config({schemaVersion:3,bindings:{toggleSidebar:'Alt+KeyS'},nativeBindings:{toggleSidebar:true}});
+  assert.equal(native.bindings.toggleComments,M.nativeBinding('toggleSidebar'));assert.equal(native.nativeBindings.toggleSidebar,false);
 });

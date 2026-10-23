@@ -47,22 +47,18 @@ async function presentation(sender,enabled){
 }
 async function returnToMeeting(){
   const {lastMeeting:last}=await chrome.storage.session.get('lastMeeting');
-  if(!last||!M.target(last.url))throw new Error('请先在一个多维表格中开启会议模式。');
-  let tab;
-  try {tab=await chrome.tabs.get(last.tabId);}catch{}
-  if(tab&&M.sameDocument(tab.pendingUrl||tab.url,last.url)){
+  const sessions=await readSessions(),active=Object.values(sessions).flatMap(session=>session.tabs);
+  const candidates=[...new Set([last?.tabId,...active.slice().reverse()])].filter(id=>active.includes(id));
+  for(const id of candidates){
+    let tab;try{tab=await chrome.tabs.get(id);}catch{continue;}
+    const url=tab.pendingUrl||tab.url;
+    if(!M.target(url)||(id===last?.tabId&&!M.sameDocument(url,last.url)))continue;
     await chrome.tabs.update(tab.id,{active:true});
     await chrome.windows.update(tab.windowId,{focused:true});
-  }else{
-    // Preserve a different page now occupying the original meeting tab.
-    let windowId;
-    try {await chrome.windows.get(last.windowId);windowId=last.windowId;}catch{}
-    tab=await chrome.tabs.create({url:last.url,active:true,...(windowId===undefined?{}:{windowId})});
-    await chrome.windows.update(tab.windowId,{focused:true});
-    await chrome.storage.session.set({lastMeeting:{...last,tabId:tab.id,windowId:tab.windowId}});
+    await chrome.storage.session.set({lastMeeting:{tabId:tab.id,windowId:tab.windowId,url}});
+    await chrome.action.setBadgeText({text:''});return {ok:true};
   }
-  await chrome.action.setBadgeText({text:''});
-  return {ok:true};
+  throw new Error('请先在一个多维表格中开启会议模式。');
 }
 chrome.runtime.onInstalled.addListener(async ({reason})=>{
   const stored=await chrome.storage.local.get('config');

@@ -8,7 +8,7 @@ const M=require(path.join(root,'shared.js'));
 const script=name=>fs.readFileSync(path.join(root,name),'utf8');
 const TEST_URL='https://acme.feishu.cn/base/Base123?table=tblOne&view=viewOne';
 function dom(html=''){const d=new JSDOM(html,{url:TEST_URL,runScripts:'outside-only',pretendToBeVisual:true});const w=d.window;w.HTMLElement.prototype.getBoundingClientRect=function(){if(this.hidden||this.style.display==='none'||this.closest('[hidden]'))return {x:0,y:0,width:0,height:0};return {x:0,y:0,left:0,top:0,right:500,bottom:200,width:500,height:200};};w.HTMLElement.prototype.scrollIntoView=function(){};Object.defineProperty(w.HTMLElement.prototype,'isContentEditable',{get(){return this.closest('[contenteditable]')?.getAttribute('contenteditable')==='true';}});w.eval(script('shared.js'));return d;}
-test('all meeting actions have separate configurable Home and deletion bindings',()=>{const c=M.config();assert.equal(M.ACTIONS.length,23);assert.equal(Object.keys(c.bindings).length,23);assert.equal(c.bindings.back,'Escape');assert.equal(c.bindings.deleteBackward,'Backspace');assert.equal(c.bindings.toggleSidebar,'PageDown');assert.equal(c.bindings.toggle,'Control+Shift+Digit9');assert.equal(c.defaultUrl,undefined);});
+test('meeting actions expose menu comments and leave Home to the browser command',()=>{const c=M.config();assert.equal(M.ACTIONS.length,23);assert.equal(Object.keys(c.bindings).length,23);assert.equal(c.bindings.back,'Escape');assert.equal(c.bindings.deleteBackward,'Backspace');assert.equal(c.bindings.toggleComments,'PageDown');assert.equal(c.bindings.toggleSidebar,'');assert.equal(c.bindings.home,undefined);assert.equal(c.bindings.toggle,'Control+Shift+Digit9');assert.equal(c.defaultUrl,undefined);});
 test('physical key code keeps Option / Shift chords stable across keyboard layouts',()=>{assert.equal(M.chord({code:'KeyE',key:'´',altKey:true}),'Alt+KeyE');assert.equal(M.chord({code:'Digit9',key:'(',ctrlKey:true,shiftKey:true}),'Control+Shift+Digit9');assert.equal(M.chord({code:'MetaLeft',metaKey:true}),'');});
 test('invalid imported chords and duplicate bindings are rejected',()=>{assert.throws(()=>M.config({bindings:{nextRecord:'Escape'}}),/冲突|相同/);assert.throws(()=>M.config({bindings:{nextRecord:'Control+javascript:alert(1)'}}));assert.equal(M.validateBinding('Meta+Shift+KeyE'),false);assert.equal(M.validateBinding('Shift+Meta+KeyE'),true);});
 test('scope allows any Feishu base, wiki base and shared base without predefined IDs',()=>{
@@ -20,14 +20,15 @@ test('scope allows any Feishu base, wiki base and shared base without predefined
 test('old config migrates the menu key and discards fixed links without losing custom keys',()=>{
   const old={defaultUrl:TEST_URL,bindings:{...M.DEFAULTS.bindings,scrollDown:'Alt+KeyM',zoomIn:'Alt+KeyZ'}};
   delete old.bindings.toggleSidebar;
+  delete old.bindings.toggleComments;
   const c=M.config(old);
-  assert.equal(c.defaultUrl,undefined);assert.equal(c.bindings.toggleSidebar,'Alt+KeyM');assert.equal(c.bindings.scrollDown,'');assert.equal(c.bindings.zoomIn,'Alt+KeyZ');assert.deepEqual(M.config(c),c);
+  assert.equal(c.defaultUrl,undefined);assert.equal(c.bindings.toggleComments,'Alt+KeyM');assert.equal(c.bindings.toggleSidebar,'');assert.equal(c.bindings.scrollDown,'');assert.equal(c.bindings.zoomIn,'Alt+KeyZ');assert.deepEqual(M.config(c),c);
 });
 test('legacy shared Backspace is migrated into deletion only; new conflicts are rejected',()=>{
   const c=M.config({schemaVersion:2,bindings:{back:'Backspace',deleteBackward:'Backspace',home:'Alt+KeyH',previousRecord:'Alt+KeyU'}});
-  assert.equal(c.bindings.back,'');assert.equal(c.bindings.home,'Alt+KeyH');assert.equal(c.bindings.navigateUp,'Alt+KeyU');assert.equal(c.bindings.previousRecord,'');
+  assert.equal(c.bindings.back,'');assert.equal(c.bindings.home,undefined);assert.equal(c.bindings.navigateUp,'Alt+KeyU');assert.equal(c.bindings.previousRecord,'');
   assert.equal(M.actionFor('Backspace',c).id,'deleteBackward');assert.deepEqual(M.config(c),c);
-  assert.throws(()=>M.config({...c,bindings:{...c.bindings,home:'Backspace'}}),/相同/);
+  assert.throws(()=>M.config({...c,bindings:{...c.bindings,back:'Backspace'}}),/相同/);
 });
 test('zoom key presses have no debounce and repeat can accumulate',()=>{
   for(const id of ['zoomIn','zoomOut','resetZoom'])assert.equal(M.keyDelay(M.ACTIONS.find(a=>a.id===id),'none'),0);
@@ -64,15 +65,19 @@ test('partial canvas repaint drops stale rows and preserves untouched rows',()=>
 test('offscreen canvas text is carried through drawImage',()=>{const {d,w,context:c,Ctx,snapshot}=canvasDom();const off=w.document.createElement('canvas');off.width=2080;off.height=1014;const src=new Ctx(off);src.fillText('1',74,164);src.fillText('离屏记录',106,164);c.scale=1;c.drawImage(off,0,0);assert.equal(snapshot().rows[0].title,'离屏记录');d.window.close();});
 function commentDom(text='待发送的语音文字'){const d=dom(`<div id="BASE_CARD_MODAL_CONTENT_FOCUS_ID" tabindex="0"><button class="bitable-discussion-add-button">评论</button><button class="bitable-card-modal-header-v2-btn-next"></button><button class="bitable-card-modal-header-v2-btn-close"></button><div class="record-discussion-container-horizontal"><div class="record-discussion-container"><div data-placeholder="添加新的评论..." contenteditable="true">${text}</div><div class="bitable-discussion__reply__send-btn-wrap_new_ui"></div></div></div></div>`);d.window.eval(script('adapter.js'));d.window.eval(script('field-navigation.js'));return {d,adapter:new d.window.MeetingRemote.FeishuAdapter(()=>{}),editor:d.window.document.querySelector('[contenteditable]')};}
 test('collapsing a draft retains the exact editor node and restores it',async()=>{const {d,adapter:a,editor}=commentDom();await a.closeComments();assert.equal(a.commentsOpen(),false);assert.equal(a.hasDraft(),true);assert.equal(a.editor(),editor);await a.openComments();assert.equal(a.commentsOpen(),true);assert.equal(a.editor(),editor);assert.equal(editor.textContent,'待发送的语音文字');d.window.close();});
+test('menu toggles comments from an active editor and restores the draft with focus',async()=>{
+  const {d,adapter:a,editor}=commentDom('未发送的草稿');editor.focus();await a.toggleComments();
+  assert.equal(a.commentsOpen(),false);assert.equal(editor.textContent,'未发送的草稿');
+  await a.toggleComments();assert.equal(a.commentsOpen(),true);assert.equal(d.window.document.activeElement,editor);assert.equal(editor.textContent,'未发送的草稿');d.window.close();
+});
 test('a hidden draft blocks switching record, switching view and closing detail',async()=>{const {d,adapter:a}=commentDom();await a.closeComments();await assert.rejects(()=>a.moveRecord(1),/未发送/);await assert.rejects(()=>a.switchView(1),/未发送/);await assert.rejects(()=>a.closeDetail(),/未发送/);d.window.close();});
 test('comment send rejects disabled controls and ignores a concurrent duplicate',async()=>{const {d,adapter:a,editor}=commentDom();const button=d.window.document.querySelector('.bitable-discussion__reply__send-btn-wrap_new_ui');button.classList.add('disabled');await assert.rejects(()=>a.send(),/不能发送/);button.classList.remove('disabled');let clicks=0;button.addEventListener('click',()=>{clicks++;setTimeout(()=>{editor.textContent='';},60);});await Promise.all([a.send(),a.send()]);assert.equal(clicks,1);assert.equal(a.hasDraft(),false);d.window.close();});
-test('Home exits comment editing first, then collapses a draft; deletion never closes a card',async()=>{
+test('explicit return exits comment editing then collapses a draft; deletion of nonempty text preserves editing',async()=>{
   const {d,adapter:a,editor}=commentDom('测试草稿');let deletes=0;
   d.window.document.execCommand=command=>{assert.equal(command,'delete');deletes++;editor.textContent=editor.textContent.slice(0,-1);return true;};
-  editor.focus();a.deleteBackward();assert.equal(deletes,1);assert.equal(a.commentsOpen(),true);
+  editor.focus();await a.deleteBackward();assert.equal(deletes,1);assert.equal(a.commentsOpen(),true);
   await a.back();assert.equal(a.commentsOpen(),true);assert.equal(d.window.document.activeElement,a.card());
-  a.deleteBackward();assert.equal(deletes,1);assert.equal(a.commentsOpen(),true);
-  await a.back();assert.equal(a.commentsOpen(),false);assert.equal(editor.textContent,'测试草');
+  await a.deleteBackward();assert.equal(deletes,1);assert.equal(a.commentsOpen(),false);assert.equal(editor.textContent,'测试草');
   await assert.rejects(()=>a.back(),/未发送/);d.window.close();
 });
 test('sidebar toggles use Feishu controls and preserve unrelated page content',async()=>{
@@ -81,6 +86,9 @@ test('sidebar toggles use Feishu controls and preserve unrelated page content',a
   doc.querySelector('.bitable-sidebar-close-icon-wrap').onclick=()=>{doc.getElementById('bitable-sidebar-wrapper').classList.add('fold');doc.querySelector('.bitable-sidebar-opener').className='bitable-sidebar-opener visible';};
   doc.querySelector('.bitable-sidebar-opener').onclick=()=>{doc.getElementById('bitable-sidebar-wrapper').classList.remove('fold');doc.querySelector('.bitable-sidebar-opener').className='bitable-sidebar-opener invisible';};
   assert.equal(a.isBasePage(),true);await a.toggleSidebar();assert.equal(a.sidebarExpanded(),false);await a.toggleSidebar();assert.equal(a.sidebarExpanded(),true);assert.equal(doc.querySelector('input').value,'untouched');
+  await a.collapseSidebarForMeeting();assert.equal(a.sidebarExpanded(),false);await a.collapseSidebarForMeeting();assert.equal(a.sidebarExpanded(),false);
+  await a.restoreMeetingSidebar();assert.equal(a.sidebarExpanded(),true);
+  await a.toggleSidebar();await a.collapseSidebarForMeeting();await a.restoreMeetingSidebar();assert.equal(a.sidebarExpanded(),false);
   doc.body.replaceChildren();d.reconfigure({url:'https://acme.feishu.cn/wiki/OrdinaryDoc'});assert.equal(a.isBasePage(),false);
   d.window.close();
 });

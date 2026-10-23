@@ -3,16 +3,28 @@
   const M=globalThis.MeetingRemote, A=M.FeishuAdapter.prototype;
   const FIELD='.bitable-record-card-field-wrapper, .card-field-editor';
   const EDITOR='[contenteditable="true"], textarea, input:not([type="hidden"]):not([type="file"]):not([type="checkbox"]):not([type="radio"])';
-  const shown=e=>M.visible(e)&&!e.closest('[hidden],[aria-hidden="true"]');
+  const shown=e=>{
+    if(!M.visible(e)||e.closest('[hidden],[aria-hidden="true"]'))return false;
+    // Feishu keeps collapsed option lists laid out inside zero-height clipping containers.
+    // Their descendants have nonzero rectangles but cannot be seen or operated.
+    for(let parent=e.parentElement;parent;parent=parent.parentElement){
+      const style=getComputedStyle(parent),rect=parent.getBoundingClientRect();
+      if(style.opacity==='0'||style.visibility==='hidden'||style.display==='none')return false;
+      if((rect.height<=0&&/hidden|clip|auto|scroll/.test(style.overflowY||style.overflow))||
+         (rect.width<=0&&/hidden|clip|auto|scroll/.test(style.overflowX||style.overflow)))return false;
+    }
+    return true;
+  };
   const usable=e=>shown(e)&&!e.disabled&&!e.readOnly&&getComputedStyle(e).opacity!=='0';
   const label=field=>field.querySelector('.bitable-card-field-label__name')?.textContent.trim()||'字段';
   const arrow={up:'ArrowUp',down:'ArrowDown',left:'ArrowLeft',right:'ArrowRight'};
 
   A.clearFieldFocus=function(){
     if(this.fieldFocus){
-      const {field,element,tabindex}=this.fieldFocus;
+      const {field,element,tabindex,focusElement,focusTabindex}=this.fieldFocus;
       field.removeAttribute('data-fmr-focused');element.removeAttribute('data-fmr-target');
       if(tabindex===null)element.removeAttribute('tabindex');else element.setAttribute('tabindex',tabindex);
+      if(focusElement&&focusElement!==element){if(focusTabindex===null)focusElement.removeAttribute('tabindex');else focusElement.setAttribute('tabindex',focusTabindex);}
     }
     this.fieldFocus=null;
   };
@@ -37,10 +49,14 @@
   };
   A.focusStop=function(stop){
     this.clearFieldFocus();
-    this.fieldFocus={...stop,tabindex:stop.element.getAttribute('tabindex'),record:this.cardRecordId()};
+    // Focusing an anchor inside contenteditable can move the caret into its editor.
+    // Keep keyboard focus on the field while highlighting and activating its exact link.
+    const focusElement=stop.kind==='link'?stop.field:stop.element;
+    this.fieldFocus={...stop,focusElement,focusTabindex:focusElement.getAttribute('tabindex'),tabindex:stop.element.getAttribute('tabindex'),record:this.cardRecordId()};
     stop.element.setAttribute('tabindex','-1');
+    focusElement.setAttribute('tabindex','-1');
     stop.field.setAttribute('data-fmr-focused','');stop.element.setAttribute('data-fmr-target','');
-    stop.element.focus({preventScroll:true});
+    focusElement.focus({preventScroll:true});
     stop.element.scrollIntoView({block:'nearest',inline:'nearest',behavior:'instant'});
     this.notify(stop.kind==='comment'?'评论 · 按确定开始输入':label(stop.field)+(stop.kind==='link'?' · 按确定在新标签页打开':' · 按确定操作'));
   };

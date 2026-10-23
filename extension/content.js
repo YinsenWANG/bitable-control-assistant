@@ -24,7 +24,7 @@
     shadow.querySelector('.bar').classList.toggle('paused',!enabled);
     const setText=(el,text)=>{if(el.textContent!==text)el.textContent=text;};
     status.style.color='#fff';setText(status,enabled?adapter.state()+' · '+Math.round(zoom*100)+'%':'会议模式已关闭');
-    setText(shadow.querySelector('.help'),enabled?`${adapter.card()?'上下浏览字段 · 左右换记录':'上下换记录 · 左右换视图'}　${M.label(config.bindings.confirm)} 确定　${M.label(config.bindings.home)} 返回`:`按 ${M.label(config.bindings.toggle)} 进入全屏 · ${adapter.viewName()}`);
+    setText(shadow.querySelector('.help'),enabled?`${adapter.card()?'上下浏览字段 · 左右换记录':'上下换记录 · 左右换视图'}　${M.label(config.bindings.confirm)} 确定　${M.label(config.bindings.deleteBackward)} 返回`:`按 ${M.label(config.bindings.toggle)} 进入全屏 · ${adapter.viewName()}`);
     setText(shadow.querySelector('.toggle'),enabled?'退出会议':'进入全屏');
   }
   async function zoomAction(direction){const r=await chrome.runtime.sendMessage({type:'zoom',direction});if(!r?.ok)throw new Error(r?.error||'缩放失败');zoom=r.zoom;notify('缩放 '+Math.round(zoom*100)+'%');}
@@ -38,6 +38,7 @@
       if(remember)sessionStorage.setItem(modeKey(),String(value));
       if(!enabled){adapter.restoreHidden();adapter.clearFieldFocus();}
       update();
+      try{if(enabled)await adapter.collapseSidebarForMeeting();else await adapter.restoreMeetingSidebar();}catch(e){notify(e.message,true);}
       if(enabled&&!adapter.card()){try{await adapter.ensureSelection();}catch(e){notify(e.message,true);}}
       return {ok:true,enabled};
     }catch(e){notify(e.message,true);return {ok:false,error:e.message};}
@@ -78,10 +79,10 @@
         case 'nextRecord':await adapter.moveRecord(1);break;
         case 'confirm':await adapter.confirm();break;
         case 'back':await adapter.back();break;
-        case 'home':await adapter.back();break;
         case 'firstView':await adapter.firstView();break;
         case 'toggleSidebar':await adapter.toggleSidebar();break;
-        case 'deleteBackward':adapter.deleteBackward();break;
+        case 'deleteBackward':await adapter.deleteBackward();break;
+        case 'toggleComments':await adapter.toggleComments();break;
         case 'scrollDown':adapter.scroll(1);break;
         case 'scrollUp':adapter.scroll(-1);break;
         case 'openDetail':await adapter.openDetail();break;
@@ -101,11 +102,12 @@
     if(composing||e.isComposing||e.keyCode===229)return;
     const action=M.actionFor(M.chord(e),config);if(!action||(!enabled&&action.id!=='toggle'))return;
     const context=adapter.inputContext(e);
-    const policy=M.inputPolicy(action,M.chord(e),context,{native:config.nativeBindings[action.id],popup:adapter.editorPopupOpen()});
+    const policy=M.inputPolicy(action,M.chord(e),context,{native:config.nativeBindings[action.id],popup:adapter.editorPopupOpen(),emptyInput:action.id==='deleteBackward'&&adapter.inputIsEmpty(),repeat:e.repeat});
     if(policy==='pass'||policy==='native')return;
     if(context==='comment'&&Date.now()-compositionEnded<200&&['confirm','sendComment'].includes(action.id))return;
     if(policy==='caret'){e.preventDefault();e.stopImmediatePropagation();adapter.moveCaret(M.DIRECTIONS[action.id]);return;}
     e.preventDefault();e.stopImmediatePropagation();
+    if(policy==='block')return;
     if(e.repeat&&!action.repeat)return;
 
     const time=Date.now(),last=timings.get(action.id)||0,delay=M.keyDelay(action,context);

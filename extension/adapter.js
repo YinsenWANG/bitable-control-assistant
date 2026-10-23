@@ -107,6 +107,7 @@
       menu.click();if(!await waitFor(()=>this.card()))throw new Error('详情未能展开。');
     }
     restoreHidden(){if(this.hiddenPanel){this.hiddenPanel.hidden=false;this.hiddenPanel.style.removeProperty('display');this.hiddenPanel=null;}}
+    async toggleComments(){return this.commentsOpen()?this.closeComments():this.openComments();}
     async openComments(){
       if(!this.card())await this.openDetail();
       this.restoreHidden();
@@ -169,6 +170,15 @@
       if(!await waitFor(()=>this.sidebarExpanded()===!expanded))throw new Error('侧边栏尚未完成切换，请稍后再试。');
       this.notify(expanded?'侧边栏已折叠':'侧边栏已展开');
     }
+    async collapseSidebarForMeeting(){
+      if(this.meetingSidebar)return;
+      const expanded=this.sidebarExpanded();this.meetingSidebar={path:location.pathname,expanded};
+      if(expanded===true)await this.toggleSidebar();
+    }
+    async restoreMeetingSidebar(){
+      const original=this.meetingSidebar;this.meetingSidebar=null;
+      if(original?.path===location.pathname&&original.expanded===true&&this.sidebarExpanded()===false)await this.toggleSidebar();
+    }
     async send(){
       if(this.sending)return;
       const editor=this.editor();if(!visible(editor))throw new Error('请先打开评论输入框。');
@@ -186,16 +196,25 @@
       const area=areas.sort((a,b)=>b.clientHeight-a.clientHeight)[0];
       if(!area){this.notify('内容已完整显示');return;}area.scrollBy({top:direction*area.clientHeight*.8,behavior:'smooth'});
     }
-    deleteBackward(){
+    inputIsEmpty(){
+      const active=document.activeElement;
+      if(!['comment','other','grid-edit'].includes(this.inputContext({target:active})))return false;
+      const editor=active?.closest('input,textarea,[contenteditable="true"]');if(!editor)return false;
+      if(editor.matches('input,textarea'))return editor.value.length===0;
+      return !(editor.textContent||'').replace(/[\u200b\ufeff]/g,'')&&!editor.querySelector('img,video,audio,[data-mention-id],[data-file-token]');
+    }
+    async deleteBackward(){
       const e=document.activeElement;if(!e)return;
-      const inComment=this.editor()?.contains(e)||e===this.editor();
       const editable=e.isContentEditable||e.matches('textarea,input:not([type="button"]):not([type="checkbox"])');
-      if(!editable||!['comment','other','grid-edit'].includes(this.inputContext({target:e})))return;
+      if(!editable||!['comment','other','grid-edit'].includes(this.inputContext({target:e}))||this.inputIsEmpty())return this.back();
       // Browser editing commands preserve the editor's input events and undo stack.
       document.execCommand('delete',false);
     }
     inputContext(e){
       const node=e.target?.nodeType===1?e.target:document.activeElement;
+      // URL field links inherit contenteditable from Feishu's rich-text wrapper.
+      // A link explicitly focused by field navigation is still an action, not a caret.
+      if(this.fieldFocus?.element===node&&node.hasAttribute('data-fmr-target'))return 'none';
       const editable=node?.closest('input,textarea,[contenteditable="true"]');
       if(!editable||!visible(editable)||getComputedStyle(editable).opacity==='0'||editable.disabled||editable.readOnly||editable.matches('input[type="button"],input[type="checkbox"],input[type="radio"],input[type="submit"],input[type="range"],input[type="file"],input[type="color"]'))return 'none';if(this.editor()?.contains(editable)||editable===this.editor())return 'comment';
       if(editable.closest('.faster-overlay')){

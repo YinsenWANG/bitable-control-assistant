@@ -1,6 +1,6 @@
 {
   "name": "feishu-meeting-remote",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "Customizable Chrome meeting controls for Feishu Base",
   "license": "MIT",
