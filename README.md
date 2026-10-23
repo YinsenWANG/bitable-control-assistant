@@ -1,7 +1,7 @@
-<p align="center"><img src="extension/icons/256.png" width="80" alt="飞书会议遥控器"></p>
-<h1 align="center">飞书会议遥控器</h1>
+<p align="center"><img src="extension/icons/256.png" width="80" alt="多维表格控制助手"></p>
+<h1 align="center">多维表格控制助手</h1>
 <p align="center">把屏幕留给内容，把操作交给遥控器。</p>
-<p align="center"><a href="https://github.com/YinsenWANG/feishu-meeting-remote/releases/latest">下载最新版</a> · <a href="docs/INSTALL.md">安装与配置</a> · <a href="store/SUBMISSION_GUIDE.zh-CN.md">Chrome 商店提交指南</a> · <a href="CHANGELOG.md">更新记录</a></p>
+<p align="center"><a href="https://github.com/YinsenWANG/bitable-control-assistant/releases/latest">下载最新版</a> · <a href="docs/INSTALL.md">安装与配置</a> · <a href="store/SUBMISSION_GUIDE.zh-CN.md">Chrome 商店提交指南</a> · <a href="CHANGELOG.md">更新记录</a></p>
 
 投影开会时，浏览器工具栏、文档顶部栏和数据表侧栏会挤占内容空间。为了切换记录、打开链接、补充结论，主持人还要不断回到电脑前。
 
@@ -20,7 +20,7 @@
 
 ## 三步开始
 
-1. 在 [Releases](https://github.com/YinsenWANG/feishu-meeting-remote/releases/latest) 下载 `feishu-meeting-remote-1.3.0-chrome.zip` 并解压。Chrome 打开 `chrome://extensions`，开启开发者模式，加载含 `manifest.json` 的文件夹。
+1. 在 [Releases](https://github.com/YinsenWANG/bitable-control-assistant/releases/latest) 下载 `bitable-control-assistant-1.4.1-chrome.zip` 并解压。Chrome 打开 `chrome://extensions`，开启开发者模式，加载含 `manifest.json` 的文件夹。
 2. 在扩展设置页查看组合键，将遥控器映射为相同组合。Home 与电源由 **Chrome 扩展快捷键**管理，其余动作在扩展里录入；每项都可复制键值。
 3. 打开任意有权限的飞书多维表格并刷新，按 TV（默认 **Control + Shift + 9**）进入会议。
 
@@ -34,14 +34,14 @@ Mac 想完全隐藏地址栏与标签页：在 Chrome「显示」菜单取消「
 | ← / → | 上一视图 / 下一视图 | 上一条 / 下一条记录 |
 | OK | 展开详情 | 操作当前字段；超链接在新标签页打开 |
 | 菜单 | 打开当前记录的评论 | 展开并聚焦评论，再按收起 |
-| 返回 | 已在列表时不删除单元格 | 退出空输入框 → 收起评论 → 关闭详情 |
+| 返回 | 已在列表时不删除单元格 | 空框双击退出输入 → 单按收起评论 → 单按关闭详情 |
 | TV | 进入或退出全屏会议 | 同左 |
 | Home | 从其他标签页回到正在开会的表格 | 同左 |
 | 电源 | 刷新当前标签页，跨网站生效 | 同左 |
 | 音量 ± | 连续调整缩放 | 同左 |
 | 语音 | 沿用已有语音输入法 | 在评论输入框中输入文字 |
 
-**输入文字时**，方向键交给输入框与输入法；返回键删除光标左侧的字符，删空后松开再按才逐层返回。评论框中 OK 发送评论。收起评论会保留草稿；带草稿切换记录、视图或关闭详情时会提示先处理。
+**输入文字时**，方向键交给输入框与输入法；返回键删除光标左侧的字符，删空后需在 **0.5 秒内独立按两次**才退出输入，之后单按逐层返回。删掉最后一个字和长按连发不计入双击。评论框中 OK 发送评论。收起评论会保留草稿；带草稿切换记录、视图或关闭详情时会提示先处理。
 
 ![详情字段与评论操作示意](store/detail.png)
 
@@ -49,7 +49,7 @@ Mac 想完全隐藏地址栏与标签页：在 Chrome「显示」菜单取消「
 
 ## 按你的习惯配置
 
-![跨标签页的电源与 Home 设置](store/settings.png)
+![自定义缩放与原生开关](store/settings.png)
 
 **跨标签页命令**在 `chrome://extensions/shortcuts` 中修改，并把遥控映射设为同一组合。Chrome 必须获得焦点。
 
@@ -59,9 +59,11 @@ Mac 想完全隐藏地址栏与标签页：在 Chrome「显示」菜单取消「
 | Home：回到会议表格 | Control + Shift + 0 | Chrome 中的其他标签页 |
 | TV：进入 / 退出会议 | Control + Shift + 9 | 飞书多维表格内容区 |
 | 菜单：展开 / 收起评论 | Page Down | 飞书多维表格内容区 |
-| 放大 / 缩小 | Control + Shift + = / − | 飞书多维表格内容区 |
+| 放大 / 缩小 | Control + Shift + = / − | 飞书多维表格内容区，会议模式开启时 |
 
 升级后 Chrome 可能保留已有配置或因冲突留空，请以设置页显示为准。**Mac 的 Control（⌃）与 Command（⌘）不同。** Home 和电源的 Chrome 配置不包含在扩展配置导入导出中。
+
+音量默认沿用可自定义的组合键与固定步长（5%–25%，范围 50%–250%）。也可给「放大」「缩小」开启 **使用原生快捷键**：Mac 为 Command + = / −，Windows 为 Control + = / −，缩放档位交由 Chrome 决定。关闭开关恢复原自定义键。
 
 「动作与快捷键」提供录入、清除、复制、按键检测和配置导入导出。「展开详情」「侧边栏」可选择[飞书原生快捷键](https://www.feishu.cn/hc/zh-CN/articles/360049067880)；「刷新页面（备用）」保留 Chrome 原生 Command + R / Control + R。若为这个备用动作录入其他组合键，它仅在飞书内容区生效；跨标签页刷新应使用上方的电源命令。
 
@@ -81,7 +83,7 @@ Mac 想完全隐藏地址栏与标签页：在 Chrome「显示」菜单取消「
 
 ## 版本、反馈与开发
 
-当前版本 **v1.3.0**：新增跨标签页电源命令，并更新图文说明与商店提交材料。[发布记录](https://github.com/YinsenWANG/feishu-meeting-remote/releases/tag/v1.3.0) · [完整更新记录](CHANGELOG.md) · [报告问题](https://github.com/YinsenWANG/feishu-meeting-remote/issues)
+当前版本 **v1.4.1**：正式更名为「多维表格控制助手」；空输入框改为双击返回确认，缩放保留自定义步长并增加原生开关。[发布记录](https://github.com/YinsenWANG/bitable-control-assistant/releases/tag/v1.4.1) · [完整更新记录](CHANGELOG.md) · [报告问题](https://github.com/YinsenWANG/bitable-control-assistant/issues)
 
 反馈时请提供版本、操作系统、实际组合键、列表或详情状态及复现步骤；公开反馈中请勿粘贴内部表格链接、私人记录或凭据。
 
@@ -94,6 +96,6 @@ npm run check
 npm run package
 ```
 
-源码的 `extension/` 可直接加载；`dist/` 生成可上传商店的 ZIP。66 项自动检查和真实使用者验收范围见[验证记录](docs/TESTING.md)。发布插图源文件位于 `demo/`，不打入运行包。
+源码的 `extension/` 可直接加载；`dist/` 生成可上传商店的 ZIP。77 项自动检查和真实使用者验收范围见[验证记录](docs/TESTING.md)。发布插图源文件位于 `demo/`，不打入运行包。
 
 MIT 开源。此项目独立开发，与飞书及其运营方没有隶属关系。

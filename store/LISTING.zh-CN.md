@@ -1,10 +1,10 @@
-# Chrome Web Store 逐项填写资料 · v1.3.0
+# Chrome Web Store 逐项填写资料 · v1.4.1
 
 与 [提交指南](SUBMISSION_GUIDE.zh-CN.md) 配合使用。下面每项内容可以直接复制到对应字段。
 
 ## 名称
 
-飞书会议遥控器
+多维表格控制助手
 
 ## 简短说明
 
@@ -26,12 +26,12 @@
 • 长文本先滚动到边界，再移动到下一个字段。
 • 仅“超链接”类型字段中的链接单独落焦，按确认在新标签页打开，普通正文不会出现大量网址焦点。
 • Home 从其他标签页回到正在开会的表格；电源通过 Chrome 命令刷新当前标签页，GitHub 等网站也适用。
-• 音量加减用于连续缩放，让远处的参会者看清内容。
+• 音量加减按自定义步长调整缩放，也可选择 Chrome 原生快捷键。
 
 讨论结论随手记录
 • 菜单键展开评论并自动聚焦输入框，再次按下收起。
 • 兼容现有系统或第三方语音输入法；本扩展不录音，也不提供语音识别。
-• 输入时方向键仍用于移动光标和选词。返回键有文字时删除左侧字符，空框时逐层返回。
+• 输入时方向键仍用于移动光标和选词。返回键有文字时删除左侧字符，空框时在 0.5 秒内按两次才退出输入，再单按逐层返回。
 • 收起评论保留草稿；切换记录、视图或关闭详情前检查未发送的评论。
 
 按你的习惯配置
@@ -51,13 +51,13 @@
 ## 网站与支持链接
 
 主页：
-https://github.com/YinsenWANG/feishu-meeting-remote
+https://github.com/YinsenWANG/bitable-control-assistant
 
 支持：
-https://github.com/YinsenWANG/feishu-meeting-remote/issues
+https://github.com/YinsenWANG/bitable-control-assistant/issues
 
 隐私政策：
-https://github.com/YinsenWANG/feishu-meeting-remote/blob/main/PRIVACY.md
+https://github.com/YinsenWANG/bitable-control-assistant/blob/main/PRIVACY.md
 
 ## Privacy practices：单一用途
 
@@ -93,7 +93,7 @@ https://github.com/YinsenWANG/feishu-meeting-remote/blob/main/PRIVACY.md
 ## 图片对应关系
 
 - `icon-128.png`：商店图标。
-- `01-跨标签页电源与Home-1280x800.png`：真实设置页本地预览，推荐第一张。
+- `01-自定义缩放与原生开关-1280x800.png`：真实设置页本地预览，推荐第一张。
 - `02-自定义按键与复制-1280x800.png`：真实设置页本地预览。
 - `03-默认与会议模式对比-1280x800.png`：带标注的虚构数据布局示意。
 - `04-详情与评论示意-1280x800.png`：带标注的虚构数据布局示意。

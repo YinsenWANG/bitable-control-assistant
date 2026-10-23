@@ -4,6 +4,7 @@
   let config=M.DEFAULTS,enabled=false,ready=false,busy=false,changingMode=false,composing=false,compositionEnded=0,host,shadow,status,timer,seenDocument=null;
   const timings=new Map(),adapter=new M.FeishuAdapter(notify);
   let zoom=1,zoomRequest=0,pausedTimer,pausedHudVisible=false;
+  const heldDeletes=new Set();
   // Keep the confirmed Base identity through transient DOM replacement during zoom.
   const scoped=()=>adapter.isBasePage()||!!(enabled&&seenDocument===modeKey()&&M.target(location.href));
   const modeKey=()=> 'fmr-enabled:'+location.pathname;
@@ -40,6 +41,7 @@
   }
   async function zoomAction(direction){const request=++zoomRequest;const r=await chrome.runtime.sendMessage({type:'zoom',direction});if(!r?.ok)throw new Error(r?.error||'缩放失败');if(request!==zoomRequest)return;zoom=r.zoom;if(enabled)notify((direction>0&&zoom>=2.5?'已到最大缩放 ':direction<0&&zoom<=.5?'已到最小缩放 ':'缩放 ')+Math.round(zoom*100)+'%');}
   async function setEnabled(value,remember=true){
+    adapter.cancelEmptyReturn();
     if(changingMode)return {ok:false,error:'正在切换会议模式'};
     changingMode=true;
     try {
@@ -72,6 +74,7 @@
     update();
   }
   async function run(action){
+    if(action!=='deleteBackward')adapter.cancelEmptyReturn();
     if(!ready||!scoped())return {ok:false,error:'请打开飞书多维表格。'};
     if(action==='toggle')return setEnabled(!enabled);
     if(action==='reloadPage'){
@@ -112,17 +115,28 @@
       if(!timer)update();return {ok:true,enabled,state:adapter.state()};
     }catch(error){notify(error.message,true);return {ok:false,error:error.message};}finally{busy=false;}
   }
-  window.addEventListener('compositionstart',()=>{composing=true;},true);
+  for(const type of ['input','beforeinput','focusin','focusout','pointerdown'])window.addEventListener(type,()=>adapter.cancelEmptyReturn(),true);
+  window.addEventListener('blur',()=>{heldDeletes.clear();adapter.cancelEmptyReturn();});
+  window.addEventListener('keyup',e=>{if(e.isTrusted)heldDeletes.delete(e.code);},true);
+  window.addEventListener('compositionstart',()=>{composing=true;adapter.cancelEmptyReturn();},true);
   window.addEventListener('compositionend',()=>{composing=false;compositionEnded=Date.now();},true);
   window.addEventListener('keydown',e=>{
     if(!ready||!e.isTrusted)return;
-    if(composing||e.isComposing||e.keyCode===229)return;
-    const action=M.actionFor(M.chord(e),config);if(!action||(!enabled&&!['toggle','reloadPage'].includes(action.id))||!scoped())return;
+    if(composing||e.isComposing||e.keyCode===229){adapter.cancelEmptyReturn();return;}
+    const chord=M.chord(e),action=M.actionFor(chord,config);
+    if(chord&&action?.id!=='deleteBackward')adapter.cancelEmptyReturn();
+    if(!action||(!enabled&&!['toggle','reloadPage'].includes(action.id))||!scoped())return;
     // Volume keys bypass field/popup layout inspection and remain usable on HUD buttons.
-    if(M.isZoom(action.id)){e.preventDefault();e.stopImmediatePropagation();void run(action.id);return;}
+    if(M.isZoom(action.id)){if(config.nativeBindings[action.id])return;e.preventDefault();e.stopImmediatePropagation();void run(action.id);return;}
     if(e.composedPath().includes(host))return;
     const context=adapter.inputContext(e);
-    const policy=M.inputPolicy(action,M.chord(e),context,{native:config.nativeBindings[action.id],popup:adapter.editorPopupOpen(),emptyInput:action.id==='deleteBackward'&&adapter.inputIsEmpty(),repeat:e.repeat});
+    const emptyInput=action.id==='deleteBackward'&&adapter.inputIsEmpty();
+    const repeat=e.repeat||(action.id==='deleteBackward'&&heldDeletes.has(e.code));
+    if(action.id==='deleteBackward'){
+      heldDeletes.add(e.code);
+      if(!emptyInput||repeat)adapter.cancelEmptyReturn();
+    }
+    const policy=M.inputPolicy(action,chord,context,{native:config.nativeBindings[action.id],popup:adapter.editorPopupOpen(),emptyInput,repeat});
     if(policy==='pass'||policy==='native')return;
     if(context==='comment'&&Date.now()-compositionEnded<200&&['confirm','sendComment'].includes(action.id))return;
     if(policy==='caret'){e.preventDefault();e.stopImmediatePropagation();adapter.moveCaret(M.DIRECTIONS[action.id]);return;}
@@ -134,11 +148,12 @@
     if(e.repeat&&time-last<delay)return;timings.set(action.id,time);void run(action.id);
   },true);
   chrome.runtime.onMessage.addListener((msg,_sender,respond)=>{
+    if(msg?.type==='meeting-zoom'&&Number.isFinite(msg.zoom)&&msg.zoom>=.25&&msg.zoom<=5){++zoomRequest;adapter.cancelEmptyReturn();zoom=msg.zoom;if(enabled)notify('缩放 '+Math.round(zoom*100)+'%');respond({ok:true});return;}
     if(msg?.type==='meeting-status'){respond({ok:true,enabled,scoped:scoped(),state:adapter.state(),view:adapter.viewName(),draft:adapter.hasDraft(),version:chrome.runtime.getManifest().version});return;}
     if(msg?.type==='meeting-action'&&M.ACTIONS.some(a=>a.id===msg.action)){run(msg.action).then(respond);return true;}
   });
   chrome.storage.onChanged.addListener((changes,area)=>{
-    if(area==='local'&&changes.config){try{config=M.config(changes.config.newValue);update();}catch(e){notify(e.message,true);}}
+    if(area==='local'&&changes.config){try{config=M.config(changes.config.newValue);adapter.cancelEmptyReturn();update();}catch(e){notify(e.message,true);}}
   });
   async function init(){
     try{config=M.config((await chrome.storage.local.get('config')).config);}catch{config=M.config();}

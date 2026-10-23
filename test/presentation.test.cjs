@@ -2,7 +2,7 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 const {JSDOM}=require('jsdom');
 const root=path.resolve(__dirname,'../extension'),read=n=>fs.readFileSync(path.join(root,n),'utf8');
 const settle=()=>new Promise(resolve=>setImmediate(resolve));
-async function fixture(config={}){
+async function fixture(config={nativeBindings:{zoomIn:false,zoomOut:false}}){
   const d=new JSDOM('<main class="app-main"><header class="navigation-bar-wrapper">文档路径、分享和自动化</header><section class="suite-body">表格</section></main>',{url:'https://example.feishu.cn/base/ExampleBase',runScripts:'outside-only',pretendToBeVisual:true}),w=d.window;
   let now=0,next=1,keydown,listener,shadow;const timers=new Map(),messages=[],state={base:true,draft:false};
   w.setTimeout=(fn,delay=0)=>{const id=next++;timers.set(id,{fn,at:now+delay});return id;};w.clearTimeout=id=>timers.delete(id);
@@ -12,14 +12,15 @@ async function fixture(config={}){
   w.eval(read('shared.js'));
   w.MeetingRemote.FeishuAdapter=class {
     isBasePage(){return state.base;}card(){return null;}state(){return '记录列表';}viewName(){return '示例视图';}hasDraft(){return state.draft;}
-    guardDraft(){if(state.draft)throw new Error('请先处理评论草稿');}async ensureSelection(){}restoreHidden(){}clearFieldFocus(){}async collapseSidebarForMeeting(){}async restoreMeetingSidebar(){}
+    cancelEmptyReturn(){}guardDraft(){if(state.draft)throw new Error('请先处理评论草稿');}async ensureSelection(){}restoreHidden(){}clearFieldFocus(){}async collapseSidebarForMeeting(){}async restoreMeetingSidebar(){}
     inputContext(){throw new Error('Volume keys must not inspect editor layout');}editorPopupOpen(){throw new Error('Volume keys must not inspect popup layout');}
   };
   w.chrome={storage:{local:{get:async()=>({config:w.MeetingRemote.config(config)})},onChanged:{addListener(){}}},runtime:{getManifest:()=>({version:'1.2.0'}),onMessage:{addListener(fn){listener=fn;}},sendMessage:async msg=>{messages.push(msg);if(msg.type==='zoom'&&state.zoomReply)return state.zoomReply;return {ok:true,zoom:1.5};}}};
   w.eval(read('content.js'));await settle();
-  const run=action=>new Promise(resolve=>listener({type:'meeting-action',action},{},resolve));
-  function volume(repeat=false,onHud=false){const e={isTrusted:true,code:'Equal',ctrlKey:true,shiftKey:true,repeat,composedPath:()=>onHud?[shadow.querySelector('button'),w.document.querySelector('#fmr-hud')]:[],preventDefault(){this.prevented=true;},stopImmediatePropagation(){this.stopped=true;}};keydown(e);return e;}
-  return {d,w,state,messages,advance,run,volume,get shadow(){return shadow;}};
+  const message=msg=>new Promise(resolve=>listener(msg,{},resolve));
+  const run=action=>message({type:'meeting-action',action});
+  function volume(repeat=false,onHud=false,mods={ctrlKey:true,shiftKey:true}){const e={isTrusted:true,code:'Equal',...mods,repeat,composedPath:()=>onHud?[shadow.querySelector('button'),w.document.querySelector('#fmr-hud')]:[],preventDefault(){this.prevented=true;},stopImmediatePropagation(){this.stopped=true;}};keydown(e);return e;}
+  return {d,w,state,messages,advance,run,volume,message,get shadow(){return shadow;}};
 }
 test('meeting header visibility restores, and paused HUD expires after 3 seconds despite DOM updates',async()=>{
   const f=await fixture();await f.run('toggle');assert.ok(f.w.document.documentElement.hasAttribute('data-fmr-presentation'));
@@ -48,4 +49,14 @@ test('a late zoom response cannot bring back the HUD after meeting mode has ende
   const zoom=f.run('zoomIn');await f.run('toggle');await f.advance(3000);
   assert.equal(f.w.document.querySelector('#fmr-hud').hidden,true);
   finish({ok:true,zoom:1.2});await zoom;assert.equal(f.w.document.querySelector('#fmr-hud').hidden,true);f.d.window.close();
+});
+test('native volume leaves rapid and held keys to Chrome without preventing them or queuing zoom',async()=>{
+  const f=await fixture({nativeBindings:{zoomIn:true,zoomOut:true}});await f.run('toggle');
+  for(let i=0;i<12;i++){const e=f.volume(i>0,true,{metaKey:true});assert.equal(e.prevented,undefined);assert.equal(e.stopped,undefined);}
+  assert.equal(f.messages.filter(m=>m.type==='zoom').length,0);f.d.window.close();
+});
+test('native browser zoom outside the custom range updates the HUD and supersedes a late custom reply',async()=>{
+  const f=await fixture();await f.run('toggle');let finish;f.state.zoomReply=new Promise(resolve=>{finish=resolve;});const pending=f.run('zoomIn');
+  await f.message({type:'meeting-zoom',zoom:3});assert.match(f.shadow.querySelector('.state').textContent,/300%/);
+  finish({ok:true,zoom:1.1});await pending;assert.match(f.shadow.querySelector('.state').textContent,/300%/);f.d.window.close();
 });

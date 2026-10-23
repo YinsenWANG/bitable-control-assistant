@@ -2,6 +2,7 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
 const root=path.resolve(__dirname,'../extension'),manifest=JSON.parse(fs.readFileSync(path.join(root,'manifest.json')));
 const files=fs.readdirSync(root,{recursive:true}).filter(n=>fs.statSync(path.join(root,n)).isFile());
 assert.equal(manifest.manifest_version,3);assert.ok(manifest.description.length<=132);assert.deepEqual(manifest.permissions,['storage']);
+assert.ok(Object.values(manifest.commands).filter(c=>c.suggested_key).length<=4,'Chrome permits at most four suggested commands');
 const refs=[manifest.background.service_worker,manifest.options_page,manifest.action.default_popup,...Object.values(manifest.icons),...Object.values(manifest.action.default_icon),...manifest.content_scripts.flatMap(c=>[...c.js,...(c.css||[])])];
 for(const name of refs)assert.ok(files.includes(name),`Missing asset: ${name}`);
 for(const file of files){

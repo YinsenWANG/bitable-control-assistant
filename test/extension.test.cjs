@@ -64,6 +64,15 @@ test('browser shortcuts display and copy Chrome assignments, and refresh after r
   assert.equal(w.document.getElementById('copyMeetingShortcut').disabled,false);
   d.window.close();
 });
+test('renamed extension imports an old-name configuration without losing custom keys or zoom preferences',async()=>{
+  const d=dom(script('options.html')),w=d.window;let saved;
+  w.chrome={commands:{getAll:async()=>[]},storage:{local:{get:async()=>({}),set:async value=>{saved=value.config;}}},runtime:{sendMessage:async()=>({ok:true})}};
+  w.eval(script('options.js'));await new Promise(resolve=>setImmediate(resolve));
+  const old={format:'feishu-meeting-remote',version:5,config:{schemaVersion:5,zoomStep:15,bindings:{toggleComments:'Meta+Backslash',zoomIn:'Alt+KeyZ'}}};
+  const input=w.document.getElementById('importFile');Object.defineProperty(input,'files',{value:[{size:1000,text:async()=>JSON.stringify(old)}]});
+  await input.onchange();await w.document.getElementById('save').onclick();
+  assert.equal(saved.bindings.toggleComments,'Meta+Backslash');assert.equal(saved.bindings.zoomIn,'Alt+KeyZ');assert.equal(saved.zoomStep,15);assert.equal(saved.nativeBindings.zoomIn,false);assert.equal(saved.schemaVersion,6);d.window.close();
+});
 function canvasDom(){const d=dom('<canvas role="faster" width="2080" height="1014"></canvas>'),w=d.window;
   function Ctx(canvas){this.canvas=canvas;this.font='14px sans-serif';this.textAlign='left';this.textBaseline='alphabetic';this.globalAlpha=1;this.fillStyle='#fff';this.scale=2;}
   Object.assign(Ctx.prototype,{getTransform(){return {a:this.scale,b:0,c:0,d:this.scale,e:0,f:0}},measureText(s){return {width:s.length*8,actualBoundingBoxAscent:11,actualBoundingBoxDescent:3}},fillText(){},clearRect(){},fillRect(){},drawImage(){},reset(){}});
@@ -117,7 +126,7 @@ test('content script forwards every zoom press even while record navigation is b
   const d=dom(),w=d.window;let listener,finishNavigation,zoomMessages=0;
   w.MeetingRemote.FeishuAdapter=class {
     isBasePage(){return true;}card(){return null;}state(){return '记录列表';}viewName(){return '表格';}hasDraft(){return false;}
-    async ensureSelection(){}restoreHidden(){}moveRecord(){return new Promise(resolve=>{finishNavigation=resolve;});}
+    cancelEmptyReturn(){}async ensureSelection(){}restoreHidden(){}moveRecord(){return new Promise(resolve=>{finishNavigation=resolve;});}
   };
   w.chrome={
     storage:{local:{get:async()=>({config:M.config()})},onChanged:{addListener(){}}},

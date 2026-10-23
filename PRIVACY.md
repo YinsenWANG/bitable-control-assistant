@@ -1,8 +1,8 @@
-# 飞书会议遥控器隐私政策
+# 多维表格控制助手隐私政策
 
-生效日期：2026-10-23 · 适用版本：1.3.0
+生效日期：2026-10-23 · 适用版本：1.4.1
 
-飞书会议遥控器是独立的 Chrome 扩展，用于通过遥控器或键盘浏览飞书多维表格和进行会议演示。维护者为 GitHub 用户 YinsenWANG。
+多维表格控制助手是独立的 Chrome 扩展，用于通过遥控器或键盘浏览飞书多维表格和进行会议演示。维护者为 GitHub 用户 YinsenWANG。
 
 ## 处理哪些数据、用于什么目的
 
@@ -31,4 +31,4 @@
 
 ## 联系与变更
 
-可通过 [GitHub Issues](https://github.com/YinsenWANG/feishu-meeting-remote/issues) 联系维护者。请勿在公开反馈中粘贴私人表格链接、未公开记录或凭据。政策变化将在此文件随版本更新公开。
+可通过 [GitHub Issues](https://github.com/YinsenWANG/bitable-control-assistant/issues) 联系维护者。请勿在公开反馈中粘贴私人表格链接、未公开记录或凭据。政策变化将在此文件随版本更新公开。

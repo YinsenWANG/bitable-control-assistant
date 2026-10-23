@@ -6,7 +6,7 @@
     ['navigateLeft','左：上一视图 / 上一条记录','方向左','ArrowLeft',false],
     ['navigateRight','右：下一视图 / 下一条记录','方向右','ArrowRight',false],
     ['confirm','确定 / 操作字段 / 发送评论','中间确定','Enter',false],
-    ['deleteBackward','删除左侧文字 / 空输入框逐层返回','返回','Backspace',true],
+    ['deleteBackward','删除左侧文字 / 双击退出空输入框','返回','Backspace',true],
     ['toggle','进入 / 退出全屏会议模式','TV','Control+Shift+Digit9',false],
     ['reloadPage','刷新页面（备用）','可选','Meta+KeyR',false],
     ['toggleComments','展开并聚焦 / 收起评论','菜单','PageDown',false],
@@ -28,6 +28,8 @@
   ].map(([id,label,remote,binding,repeat])=>({id,label,remote,binding,repeat}));
   const isMac=()=>typeof navigator==='undefined'||/Mac|iPhone|iPad/.test(navigator.platform||navigator.userAgent);
   const NATIVE={
+    zoomIn:{mac:'Meta+Equal',win:'Control+Equal',note:'Chrome 原生：放大网页；使用浏览器缩放档位'},
+    zoomOut:{mac:'Meta+Minus',win:'Control+Minus',note:'Chrome 原生：缩小网页；使用浏览器缩放档位'},
     openDetail:{mac:'Meta+KeyE',win:'Control+KeyE',note:'飞书原生：展开记录详情'},
     toggleSidebar:{mac:'Meta+Backslash',win:'Control+Backslash',note:'飞书原生：展开 / 折叠侧边栏'},
     reloadPage:{mac:'Meta+KeyR',win:'Control+KeyR',note:'Chrome 原生：重新加载当前页面；也适用于其他标签页'}
@@ -36,7 +38,7 @@
   const bindingFor=(id,c)=>c.nativeBindings?.[id]?nativeBinding(id):c.bindings[id];
   ACTIONS.find(a=>a.id==='openDetail').binding=nativeBinding('openDetail');
   ACTIONS.find(a=>a.id==='reloadPage').binding=nativeBinding('reloadPage');
-  const DEFAULTS={schemaVersion:5,nativeBindings:{openDetail:false,toggleSidebar:false,reloadPage:true},autoEnable:false,showHud:true,hideHeader:true,zoomStep:10,bindings:Object.fromEntries(ACTIONS.map(a=>[a.id,a.binding]))};
+  const DEFAULTS={schemaVersion:6,nativeBindings:{zoomIn:false,zoomOut:false,openDetail:false,toggleSidebar:false,reloadPage:true},autoEnable:false,showHud:true,hideHeader:true,zoomStep:10,bindings:Object.fromEntries(ACTIONS.map(a=>[a.id,a.binding]))};
   const MODIFIERS=['Control','Alt','Shift','Meta'];
   function chord(e) {
     if (!e.code || /^(Control|Alt|Shift|Meta)(Left|Right)$/.test(e.code)) return '';
@@ -67,7 +69,7 @@
   function config(input={}) {
     if(!input||typeof input!=='object'||Array.isArray(input))throw new Error('配置格式无效。');
     const incoming={...(input.bindings||{})};
-    if(![3,4,5].includes(input.schemaVersion)&&input.bindings){
+    if(![3,4,5,6].includes(input.schemaVersion)&&input.bindings){
       for(const [old,id] of Object.entries({previousRecord:'navigateUp',nextRecord:'navigateDown',previousView:'navigateLeft',nextView:'navigateRight'})){
         if(Object.hasOwn(incoming,old)){if(!Object.hasOwn(incoming,id))incoming[id]=incoming[old];delete incoming[old];}
       }
@@ -77,7 +79,7 @@
       if(!Object.hasOwn(incoming,'openComments')&&Object.values(incoming).includes(DEFAULTS.bindings.openComments))incoming.openComments='';
     }
     const nativeBindings=Object.fromEntries(Object.keys(NATIVE).map(id=>[id,input.nativeBindings?.[id]??DEFAULTS.nativeBindings[id]]).map(([id,value])=>[id,value===true]));
-    if(![4,5].includes(input.schemaVersion)&&input.bindings){
+    if(![4,5,6].includes(input.schemaVersion)&&input.bindings){
       if(!Object.hasOwn(incoming,'toggleComments')){
         incoming.toggleComments=nativeBindings.toggleSidebar?nativeBinding('toggleSidebar'):(incoming.toggleSidebar??DEFAULTS.bindings.toggleComments);
         incoming.toggleSidebar='';nativeBindings.toggleSidebar=false;
@@ -86,6 +88,7 @@
     }
     // Adding a new default must not invalidate an existing custom Cmd/Ctrl+R binding.
     if(!Object.hasOwn(incoming,'reloadPage')&&Object.values(incoming).includes(nativeBinding('reloadPage'))){incoming.reloadPage='';nativeBindings.reloadPage=false;}
+    for(const id of ['zoomIn','zoomOut'])if(!Object.hasOwn(input.nativeBindings||{},id)&&Object.entries(incoming).some(([other,key])=>other!==id&&key===nativeBinding(id)))nativeBindings[id]=false;
     const c={...DEFAULTS,...input,bindings:{...DEFAULTS.bindings,...incoming},nativeBindings};
     if(!Number.isFinite(c.zoomStep)||c.zoomStep<5||c.zoomStep>25)throw new Error('缩放步长需要在 5–25 之间。');
     const used=new Map();
@@ -95,13 +98,13 @@
       if(v&&used.has(v))throw new Error(a.label+' 与「'+used.get(v).label+'」使用了相同快捷键。');
       if(v)used.set(v,a);
     }
-    return {schemaVersion:5,autoEnable:!!c.autoEnable,showHud:!!c.showHud,hideHeader:!!c.hideHeader,zoomStep:c.zoomStep,nativeBindings:c.nativeBindings,bindings:Object.fromEntries(ACTIONS.map(a=>[a.id,c.bindings[a.id]]))};
+    return {schemaVersion:6,autoEnable:!!c.autoEnable,showHud:!!c.showHud,hideHeader:!!c.hideHeader,zoomStep:c.zoomStep,nativeBindings:c.nativeBindings,bindings:Object.fromEntries(ACTIONS.map(a=>[a.id,c.bindings[a.id]]))};
   }
   function actionFor(value,c){return ACTIONS.find(a=>bindingFor(a.id,c)&&bindingFor(a.id,c)===value);}
   const DIRECTIONS={navigateUp:'up',navigateDown:'down',navigateLeft:'left',navigateRight:'right'};
   const isZoom=id=>['zoomIn','zoomOut','resetZoom'].includes(id);
   function inputPolicy(action,chord,context,{native=false,popup=false,emptyInput=false,repeat=false}={}){
-    if(isZoom(action.id))return 'run';
+    if(isZoom(action.id))return native?'native':'run';
     if(action.id==='reloadPage')return native?'native':'run';
     const editing=['comment','other','grid-edit'].includes(context);
     // Holding delete may erase text, but must never cascade through return levels.

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "飞书会议遥控器",
-  "version": "1.3.0",
+  "name": "多维表格控制助手",
+  "version": "1.4.1",
   "description": "为飞书多维表格提供可自定义的会议遥控快捷键：浏览记录与字段、操作链接、输入评论和全屏演示。",
   "minimum_chrome_version": "111",
   "permissions": [
@@ -15,7 +15,7 @@
   },
   "options_page": "options.html",
   "action": {
-    "default_title": "飞书会议遥控器",
+    "default_title": "多维表格控制助手",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/16.png",
@@ -82,5 +82,5 @@
       "description": "Home 键：回到正在会议模式的多维表格"
     }
   },
-  "homepage_url": "https://github.com/YinsenWANG/feishu-meeting-remote"
+  "homepage_url": "https://github.com/YinsenWANG/bitable-control-assistant"
 }

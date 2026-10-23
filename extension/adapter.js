@@ -139,7 +139,7 @@
       if(!await waitFor(()=>!this.card()))throw new Error('详情未能关闭。');
       this.clearFieldFocus?.();this.focusGrid();
     }
-    async back(){if(this.leaveInput())return;if(this.commentsOpen())return this.closeComments();if(this.card())return this.closeDetail();this.notify('已经回到记录列表');}
+    async back(){this.cancelEmptyReturn();if(this.leaveInput())return;if(this.commentsOpen())return this.closeComments();if(this.card())return this.closeDetail();this.notify('已经回到记录列表');}
     async switchView(direction,requestedId){
       this.guardDraft();this.remember();await this.closeDetail();
       const views=this.views(),current=views.indexOf(this.view()),target=requestedId?views.find(e=>e.getAttribute('data-view-id')===requestedId):views[current+direction];
@@ -203,10 +203,17 @@
       if(editor.matches('input,textarea'))return editor.value.length===0;
       return !(editor.textContent||'').replace(/[\u200b\ufeff]/g,'')&&!editor.querySelector('img,video,audio,[data-mention-id],[data-file-token]');
     }
+    cancelEmptyReturn(){this.emptyReturn=null;}
     async deleteBackward(){
       const e=document.activeElement;if(!e)return;
       const editable=e.isContentEditable||e.matches('textarea,input:not([type="button"]):not([type="checkbox"])');
-      if(!editable||!['comment','other','grid-edit'].includes(this.inputContext({target:e}))||this.inputIsEmpty())return this.back();
+      if(!editable||!['comment','other','grid-edit'].includes(this.inputContext({target:e})))return this.back();
+      if(this.inputIsEmpty()){
+        const editor=e.closest('input,textarea,[contenteditable="true"]'),now=Date.now(),previous=this.emptyReturn;
+        if(previous?.editor===editor&&now>=previous.at&&now-previous.at<=500)return this.back();
+        this.emptyReturn={editor,at:now};this.notify('0.5 秒内再按一次返回，退出输入');return;
+      }
+      this.cancelEmptyReturn();
       // Browser editing commands preserve the editor's input events and undo stack.
       document.execCommand('delete',false);
     }

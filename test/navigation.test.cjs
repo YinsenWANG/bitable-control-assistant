@@ -4,6 +4,14 @@ const root=path.resolve(__dirname,'../extension');
 const read=n=>fs.readFileSync(path.join(root,n),'utf8');
 const M=require(path.join(root,'shared.js'));
 const action=id=>M.ACTIONS.find(a=>a.id===id);
+test('volume defaults to custom steps, supports native opt-in, and old configurations remain conflict-free',()=>{
+  const c=M.config({schemaVersion:5,bindings:{zoomIn:'Alt+KeyZ'}});
+  assert.equal(c.nativeBindings.zoomIn,false);assert.equal(M.bindingFor('zoomIn',c),'Alt+KeyZ');c.nativeBindings.zoomIn=true;assert.equal(M.bindingFor('zoomIn',c),M.nativeBinding('zoomIn'));assert.equal(c.bindings.zoomIn,'Alt+KeyZ');
+  c.nativeBindings.zoomIn=false;assert.equal(M.bindingFor('zoomIn',M.config(c)),'Alt+KeyZ');assert.deepEqual(M.config(c),c);
+  const conflict=M.config({schemaVersion:5,bindings:{toggleComments:M.nativeBinding('zoomIn')}});
+  assert.equal(conflict.nativeBindings.zoomIn,false);assert.equal(conflict.bindings.toggleComments,M.nativeBinding('zoomIn'));
+  for(const id of ['zoomIn','zoomOut'])for(const context of ['comment','other','grid-edit','none'])assert.equal(M.inputPolicy(action(id),M.nativeBinding(id),context,{native:true,popup:true}),'native');
+});
 function fixture(){
   const d=new JSDOM(`<div id="BASE_CARD_MODAL_CONTENT_FOCUS_ID" tabindex="-1">
     <label class="bitable-record-card-field-wrapper"><span class="bitable-card-field-label__name">标题</span><div class="b-field-label__editor"><div contenteditable="true" tabindex="0">示例</div></div></label>
@@ -129,7 +137,7 @@ test('prose with many embedded links is one field stop; only typed URL fields cr
 });
 test('schema 4 settings retain custom keys and add native page reload without conflicts',()=>{
   const c=M.config({schemaVersion:4,bindings:{toggleComments:'Alt+KeyM',zoomIn:'Alt+KeyZ'}});
-  assert.equal(c.schemaVersion,5);assert.equal(c.hideHeader,true);assert.equal(c.bindings.toggleComments,'Alt+KeyM');assert.equal(c.bindings.zoomIn,'Alt+KeyZ');
+  assert.equal(c.schemaVersion,6);assert.equal(c.hideHeader,true);assert.equal(c.bindings.toggleComments,'Alt+KeyM');assert.equal(c.bindings.zoomIn,'Alt+KeyZ');
   assert.equal(M.bindingFor('reloadPage',c),M.nativeBinding('reloadPage'));assert.equal(c.nativeBindings.reloadPage,true);assert.deepEqual(M.config(c),c);
   const conflict=M.config({schemaVersion:4,bindings:{toggleComments:M.nativeBinding('reloadPage')}});
   assert.equal(conflict.bindings.reloadPage,'');assert.equal(conflict.nativeBindings.reloadPage,false);
@@ -152,10 +160,10 @@ test('empty input returns once per press, while holding deletion cannot exit mul
   }
   assert.equal(M.inputPolicy(action('deleteBackward'),'Backspace','none',{repeat:true}),'block');
 });
-test('empty native editors return without deleting, and spaces or attachments remain input',async()=>{
+test('empty native editors need a double press without deleting, and spaces or attachments remain input',async()=>{
   const {d,w,a}=fixture(),editor=w.document.querySelector('[contenteditable]');
   editor.textContent='\u200b';editor.focus();let deletes=0;w.document.execCommand=()=>{deletes++;};
-  assert.equal(a.inputIsEmpty(),true);await a.deleteBackward();assert.equal(deletes,0);
+  assert.equal(a.inputIsEmpty(),true);await a.deleteBackward();assert.equal(deletes,0);assert.equal(w.document.activeElement,editor);await a.deleteBackward();
   assert.equal(w.document.activeElement,a.currentFieldStop().field);assert.ok(a.card());
   editor.textContent=' ';editor.focus();assert.equal(a.inputIsEmpty(),false);await a.deleteBackward();assert.equal(deletes,1);
   editor.innerHTML='<img alt="attachment">';assert.equal(a.inputIsEmpty(),false);
@@ -164,7 +172,7 @@ test('empty native editors return without deleting, and spaces or attachments re
 });
 test('schema 3 menu key migrates to comments and Home is removed from page-local shortcuts',()=>{
   const c=M.config({schemaVersion:3,bindings:{toggleSidebar:'Alt+KeyM',home:'Control+Shift+Digit0',zoomIn:'Alt+KeyZ'}});
-  assert.equal(c.schemaVersion,5);assert.equal(c.bindings.toggleComments,'Alt+KeyM');assert.equal(c.bindings.toggleSidebar,'');assert.equal(c.bindings.home,undefined);assert.equal(c.bindings.zoomIn,'Alt+KeyZ');
+  assert.equal(c.schemaVersion,6);assert.equal(c.bindings.toggleComments,'Alt+KeyM');assert.equal(c.bindings.toggleSidebar,'');assert.equal(c.bindings.home,undefined);assert.equal(c.bindings.zoomIn,'Alt+KeyZ');
   assert.deepEqual(M.config(c),c);
   const native=M.config({schemaVersion:3,bindings:{toggleSidebar:'Alt+KeyS'},nativeBindings:{toggleSidebar:true}});
   assert.equal(native.bindings.toggleComments,M.nativeBinding('toggleSidebar'));assert.equal(native.nativeBindings.toggleSidebar,false);

@@ -21,17 +21,17 @@ function fixture(state){
       update:async(id,change)=>{if(!state.windows.has(id))throw new Error('missing window');Object.assign(state.windows.get(id),change);state.calls.push(['window',id,clone(change)]);return clone(state.windows.get(id));}
     },
     tabs:{
-      onRemoved:event(),onUpdated:event(),
+      onRemoved:event(),onUpdated:event(),onZoomChange:event(),
       get:async id=>{if(!state.tabs.has(id))throw new Error('missing tab');return clone(state.tabs.get(id));},
       update:async(id,change)=>{Object.assign(state.tabs.get(id),change);state.calls.push(['tab',id,clone(change)]);return clone(state.tabs.get(id));},
       create:async options=>{const tab={id:100+state.tabs.size,windowId:options.windowId||10,...options};state.tabs.set(tab.id,tab);state.calls.push(['create',clone(tab)]);return clone(tab);},
       query:async()=>[clone(state.tabs.get(2))],
       getZoomSettings:async()=>({mode:'automatic',scope:'per-tab'}),setZoomSettings:async()=>{},
-      getZoom:async()=>1,setZoom:async()=>{},reload:async id=>state.calls.push(['reload',id]),
-      sendMessage:async()=>({ok:true})
+      getZoom:async id=>state.tabs.get(id).zoom||1,setZoom:async(id,zoom)=>{state.tabs.get(id).zoom=zoom;state.calls.push(['zoom',id,zoom]);for(const fn of chrome.tabs.onZoomChange.listeners)fn({tabId:id,newZoomFactor:zoom});},reload:async id=>state.calls.push(['reload',id]),
+      sendMessage:async(id,msg)=>{state.calls.push(['message',id,clone(msg)]);return {ok:true};}
     }
   };
-  const context=vm.createContext({chrome,console,URL,Map,Set});
+  const context=vm.createContext({chrome,console,URL,Map,Set,setTimeout,clearTimeout});
   context.importScripts=(...names)=>{for(const name of names)vm.runInContext(fs.readFileSync(path.join(root,name),'utf8'),context);};
   vm.runInContext(fs.readFileSync(path.join(root,'background.js'),'utf8'),context);
   const sender=id=>({tab:clone(state.tabs.get(id)),url:state.tabs.get(id)?.url});
@@ -130,4 +130,14 @@ test('field links open a new tab and retain the meeting origin; unsafe URLs are 
   for(const url of ['javascript:alert(1)','file:///etc/passwd','https://user:password@example.org/','data:text/html,test'])assert.equal((await f.message({type:'open-field-link',url})).ok,false);
   assert.equal((await f.message({type:'open-field-link',url:'https://example.org/'},f.sender(2))).ok,false);
   assert.equal(f.state.calls.filter(x=>x[0]==='create').length,1);
+});
+
+test('native Chrome zoom updates the active meeting HUD without applying another zoom',async()=>{
+  const f=fixture();await f.message({type:'presentation',enabled:true});
+  for(const fn of f.chrome.tabs.onZoomChange.listeners)fn({tabId:1,newZoomFactor:3});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(f.state.calls.filter(c=>c[0]==='message'),[['message',1,{type:'meeting-zoom',zoom:3}]]);
+  assert.equal(f.state.calls.some(c=>c[0]==='zoom'),false);
+  for(const fn of f.chrome.tabs.onZoomChange.listeners)fn({tabId:2,newZoomFactor:1.2});
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(f.state.calls.filter(c=>c[0]==='message').length,1);
 });

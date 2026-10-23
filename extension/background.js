@@ -11,6 +11,9 @@ chrome.storage.onChanged.addListener((changes,area)=>{
 let sessionWork=Promise.resolve();
 function withSession(fn){const next=sessionWork.then(fn);sessionWork=next.catch(()=>{});return next;}
 async function readSessions(){return (await chrome.storage.session.get('meetingWindows')).meetingWindows||{};}
+async function activeCommandTab(tab){
+  return Number.isInteger(tab?.id)&&tab.id>=0?tab:(await chrome.tabs.query({active:true,currentWindow:true}))[0];
+}
 async function releaseTab(tabId){
   const sessions=await readSessions();
   for(const [id,session] of Object.entries(sessions)){
@@ -100,11 +103,11 @@ chrome.commands.onCommand.addListener(async (command,commandTab)=>{
       // Chrome delivers this command across tabs without a content script or
       // permission to read the destination website. Prefer the invocation tab
       // so a focus change during an async query cannot reload another page.
-      const tab=Number.isInteger(commandTab?.id)&&commandTab.id>=0?commandTab:(await chrome.tabs.query({active:true,currentWindow:true}))[0];
+      const tab=await activeCommandTab(commandTab);
       if(!Number.isInteger(tab?.id)||tab.id<0)throw new Error('请先在 Chrome 中打开要刷新的标签页。');
       await chrome.tabs.reload(tab.id);
       await chrome.action.setBadgeText({text:''});
-      await chrome.action.setTitle({title:'飞书会议遥控器'});
+      await chrome.action.setTitle({title:'多维表格控制助手'});
       return;
     }
     if(command!=='toggle-meeting')return;
@@ -120,4 +123,10 @@ chrome.commands.onCommand.addListener(async (command,commandTab)=>{
 chrome.tabs.onRemoved.addListener(tabId=>{void withSession(()=>releaseTab(tabId));});
 chrome.tabs.onUpdated.addListener((tabId,change)=>{
   if(change.url&&!M.target(change.url))void withSession(()=>releaseTab(tabId));
+});
+chrome.tabs.onZoomChange.addListener(({tabId,newZoomFactor})=>{
+  // Updating the HUD must never block zoom, even while the content script is busy.
+  void readSessions().then(sessions=>{
+    if(Object.values(sessions).some(s=>s.tabs.includes(tabId)))return chrome.tabs.sendMessage(tabId,{type:'meeting-zoom',zoom:newZoomFactor});
+  }).catch(()=>{});
 });
