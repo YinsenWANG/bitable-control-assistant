@@ -4,7 +4,7 @@ const read=n=>fs.readFileSync(path.join(__dirname,'../extension',n),'utf8'),sett
 async function fixture({voiceRelay=true,meeting=true,drawer=false,counter=false,autoCloseComments=true,commentCloseDelay=1}={}){
   const d=new JSDOM(`<div class="faster-view" tabindex="-1"></div>${drawer?'<div role="dialog" aria-modal="true" tabindex="-1">':''}<div id="BASE_CARD_MODAL_CONTENT_FOCUS_ID" tabindex="-1">
     <div class="bitable-record-card-field-wrapper"><span class="bitable-card-field-label__name">说明</span><div id="BITABLE_TEXT_EDITOR_CONTAINER_ID_PREFIX_recVoice1_fldTitle"><textarea>字段原文</textarea></div></div>
-    <button class="bitable-discussion-add-button">评论</button><button class="bitable-card-modal-header-v2-btn-close">关闭</button>
+    <button class="bitable-discussion-add-button">评论</button><button class="bitable-card-modal-header-v2-btn-prev">上一条</button><button class="bitable-card-modal-header-v2-btn-next">下一条</button><button class="bitable-card-modal-header-v2-btn-close">关闭</button>
     <div class="record-discussion-container" hidden>${counter?'<span class="record-discussion-header-text">评论 (2)</span>':''}<div contenteditable="true" tabindex="0" data-placeholder="评论"></div><button class="bitable-discussion__reply__send-btn-wrap_new_ui">发送</button></div>
   </div>${drawer?'</div>':''}`,{url:'https://test.feishu.cn/base/Test123',runScripts:'outside-only',pretendToBeVisual:true}),w=d.window;
   let now=1000,next=1,message,storageChanged;const timers=new Map(),keys={},receiverEvents=new Map(),state={visible:true,focused:true,base:true,inserts:0,sends:0,failInsert:false,commentCount:2};
@@ -42,7 +42,7 @@ async function fixture({voiceRelay=true,meeting=true,drawer=false,counter=false,
   if(drawer)card.closest('[role="dialog"]').focus();
   if(meeting)await run('toggle');
   return {d,w,card,panel,editor,state,proxy,input,utter,key,run,advance,
-    nativeComments(){const button=card.querySelector('.bitable-discussion-add-button');commentPointer({isTrusted:true,target:button});button.click();},
+    nativeComments(){const button=card.querySelector('.bitable-discussion-add-button');commentPointer({isTrusted:true,type:'pointerdown',target:button});button.click();},
     changeConfig(value){storageChanged({config:{newValue:{schemaVersion:7,voiceRelay:value,autoCloseComments,commentCloseDelay}}},'local');},
     changeSettings(changes){storageChanged({config:{newValue:{schemaVersion:7,voiceRelay,autoCloseComments,commentCloseDelay,...changes}}},'local');}
   };
@@ -50,6 +50,16 @@ async function fixture({voiceRelay=true,meeting=true,drawer=false,counter=false,
 async function openFreshDetail(f,{comments=false,draft=''}={}){
   f.card.remove();await settle();f.panel.hidden=!comments;f.editor.textContent=draft;
   f.w.document.body.append(f.card);await settle();
+}
+function renderRecord(f,recordId,{replace=false,comments=true,autofocus=false}={}){
+  let card=f.w.document.getElementById('BASE_CARD_MODAL_CONTENT_FOCUS_ID');
+  if(replace){const next=card.cloneNode(true);card.replaceWith(next);card=next;}
+  card.querySelector('[id^="BITABLE_TEXT_EDITOR_CONTAINER_ID_PREFIX_"]').id='BITABLE_TEXT_EDITOR_CONTAINER_ID_PREFIX_'+recordId+'_fldTitle';
+  const panel=card.querySelector('.record-discussion-container'),editor=panel.querySelector('[contenteditable]');
+  panel.hidden=!comments;
+  card.querySelector('.bitable-discussion-add-button').onclick=()=>{panel.hidden=!panel.hidden;if(!panel.hidden)editor.focus();};
+  if(autofocus&&comments)editor.focus();
+  return {card,panel,editor};
 }
 test('the relay is opt-in and old custom shortcuts survive the new configuration',()=>{
   const old=M.config({schemaVersion:6,bindings:{toggleComments:'Meta+Backslash'}});assert.equal(old.voiceRelay,false);assert.equal(old.bindings.toggleComments,'Meta+Backslash');
@@ -103,9 +113,65 @@ test('entering meeting mode preserves an empty comment editor the user is alread
   await f.run('toggle');await settle();assert.equal(f.panel.hidden,false);assert.equal(f.w.document.activeElement,f.editor);
   assert.equal((await f.key('Backspace')).prevented,undefined);assert.equal(f.w.document.activeElement,f.editor);f.w.close();
 });
-test('replacing an open card during record navigation keeps its comment state',async()=>{
+test('rerendering the same record keeps comments that the user deliberately opened',async()=>{
   const f=await fixture();await f.run('toggleComments');const replacement=f.card.cloneNode(true);
   f.card.replaceWith(replacement);await settle();assert.equal(replacement.querySelector('.record-discussion-container').hidden,false);f.w.close();
+});
+test('closing comments keeps them collapsed through a later native redraw',async()=>{
+  const f=await fixture();await f.run('toggleComments');await f.run('toggleComments');
+  f.panel.hidden=false;f.editor.focus();await settle();
+  assert.equal(f.panel.hidden,true);assert.notEqual(f.w.document.activeElement,f.editor);f.w.close();
+});
+test('closing comments with the native button also survives a native redraw',async()=>{
+  const f=await fixture();f.nativeComments();await settle();assert.equal(f.panel.hidden,false);
+  f.nativeComments();await settle();assert.equal(f.panel.hidden,true);
+  f.panel.hidden=false;await settle();assert.equal(f.panel.hidden,true);f.w.close();
+});
+test('changing the record ID on a reused card resets an earlier comment opening',async()=>{
+  const f=await fixture();await f.run('toggleComments');
+  // Feishu may update only existing attributes, without replacing child nodes.
+  f.card.querySelector('[id^="BITABLE_TEXT_EDITOR_CONTAINER_ID_PREFIX_"]').id='BITABLE_TEXT_EDITOR_CONTAINER_ID_PREFIX_recVoice2_fldTitle';
+  await settle();assert.equal(f.panel.hidden,true);f.w.close();
+});
+test('a different record replacing the whole card does not inherit open comments',async()=>{
+  const f=await fixture();await f.run('toggleComments');
+  const next=renderRecord(f,'recVoice2',{replace:true,autofocus:true});await settle();
+  assert.equal(next.panel.hidden,true);assert.notEqual(f.w.document.activeElement,next.editor);f.w.close();
+});
+test('temporary missing field IDs preserve current intent but a later new ID resets it',async()=>{
+  const f=await fixture();await f.run('toggleComments');const field=f.card.querySelector('[id^="BITABLE_TEXT_EDITOR_CONTAINER_ID_PREFIX_"]');
+  field.removeAttribute('id');await settle();assert.equal(f.panel.hidden,false);
+  field.id='BITABLE_TEXT_EDITOR_CONTAINER_ID_PREFIX_recVoice1_fldTitle';await settle();assert.equal(f.panel.hidden,false);
+  field.removeAttribute('id');await settle();field.id='BITABLE_TEXT_EDITOR_CONTAINER_ID_PREFIX_recVoice2_fldTitle';await settle();assert.equal(f.panel.hidden,true);f.w.close();
+});
+test('hyperlink-only record identities also reset the comment preference',async()=>{
+  const f=await fixture();const field=f.card.querySelector('[id^="BITABLE_TEXT_EDITOR_CONTAINER_ID_PREFIX_"]');
+  field.id='BITABLE_URL_EDITOR_CONTAINER_recVoice1_fldLink';await settle();await f.run('toggleComments');
+  field.id='BITABLE_URL_EDITOR_CONTAINER_recVoice2_fldLink';await settle();assert.equal(f.panel.hidden,true);f.w.close();
+});
+test('a stale close failure cannot disable collapsing on the next record',async()=>{
+  const f=await fixture();f.card.querySelector('.bitable-discussion-add-button').onclick=()=>{};
+  f.panel.hidden=false;await settle();renderRecord(f,'recVoice2',{comments:true});await f.advance(800);
+  assert.equal(f.panel.hidden,true);f.panel.hidden=false;await settle();assert.equal(f.panel.hidden,true);f.w.close();
+});
+test('left and right navigation keeps every destination collapsed, including delayed native reopening',async()=>{
+  for(const voiceRelay of [false,true]){
+    const f=await fixture({voiceRelay});await f.run('toggleComments');
+    let step=0;
+    for(const direction of ['navigateRight','navigateLeft','nextRecord','previousRecord','navigateRight','navigateLeft']){
+      const current=f.w.document.getElementById('BASE_CARD_MODAL_CONTENT_FOCUS_ID');
+      current.querySelector(direction==='navigateLeft'||direction==='previousRecord'?'.bitable-card-modal-header-v2-btn-prev':'.bitable-card-modal-header-v2-btn-next').onclick=()=>{
+        renderRecord(f,++step%2?'recVoice2':'recVoice1',{replace:step%3===0,comments:step%2===0,autofocus:true});
+      };
+      assert.equal((await f.run(direction)).ok,true);
+      const card=f.w.document.getElementById('BASE_CARD_MODAL_CONTENT_FOCUS_ID'),panel=card.querySelector('.record-discussion-container');
+      panel.hidden=false;panel.querySelector('[contenteditable]').focus();await f.advance(1200);
+      assert.equal(panel.hidden,true,voiceRelay+' / '+direction+' / '+step);
+      assert.equal(f.state.sends,0);
+    }
+    await f.run('toggleComments');assert.equal(f.w.document.getElementById('BASE_CARD_MODAL_CONTENT_FOCUS_ID').querySelector('.record-discussion-container').hidden,false);
+    f.w.close();
+  }
 });
 test('voice is ready when Feishu initially focuses the outer record drawer',async()=>{
   const f=await fixture({drawer:true});assert.ok(f.proxy());assert.equal(f.w.document.activeElement,f.proxy());
@@ -169,6 +235,10 @@ test('a confirmed OK send closes comments one second after the comment is confir
   await f.advance(999);assert.equal(f.panel.hidden,false);await f.advance(1);
   assert.equal(f.panel.hidden,true);assert.equal(f.card.hidden,false);assert.equal(f.state.commentCount,3);f.w.close();
 });
+test('native redraw after a successful automatic close cannot reopen comments',async()=>{
+  const f=await fixture();await f.utter('自动收起后保持收起');await f.key('Enter');await f.advance(1200);
+  assert.equal(f.panel.hidden,true);f.panel.hidden=false;f.editor.focus();await settle();assert.equal(f.panel.hidden,true);f.w.close();
+});
 test('automatic close can be turned off without affecting sending',async()=>{
   const f=await fixture({autoCloseComments:false});await f.utter('保留评论面板');await f.key('Enter');await f.advance(3000);
   assert.equal(f.state.sends,1);assert.equal(f.panel.hidden,false);assert.equal(f.editor.textContent,'');f.w.close();
@@ -217,7 +287,10 @@ test('manually reopening comments or switching records cancels the previous auto
   for(const mode of ['reopen','record']){
     const f=await fixture();await f.utter('已发送');await f.key('Enter');
     if(mode==='reopen'){await f.key('PageDown');assert.equal(f.panel.hidden,true);await f.key('PageDown');assert.equal(f.panel.hidden,false);}
-    else f.card.querySelector('[id^="BITABLE_TEXT_EDITOR_CONTAINER_ID_PREFIX_"]').id='BITABLE_TEXT_EDITOR_CONTAINER_ID_PREFIX_recVoice2_fldTitle';
+    else {
+      f.card.querySelector('[id^="BITABLE_TEXT_EDITOR_CONTAINER_ID_PREFIX_"]').id='BITABLE_TEXT_EDITOR_CONTAINER_ID_PREFIX_recVoice2_fldTitle';
+      await settle();assert.equal(f.panel.hidden,true);await f.run('toggleComments');assert.equal(f.panel.hidden,false);
+    }
     await f.advance(1200);assert.equal(f.panel.hidden,false);f.w.close();
   }
 });

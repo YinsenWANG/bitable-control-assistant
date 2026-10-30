@@ -1,4 +1,4 @@
-# Chrome 商店提交指南 · v1.5.0
+# Chrome 商店提交指南 · v1.5.1
 
 你已经注册了 Chrome 开发者，可直接从开发者后台开始。准备好本版材料包后，按下面顺序提交。**上传的是扩展 ZIP，不是整个材料包，也不是 GitHub 的源码 ZIP。**
 
@@ -9,7 +9,7 @@
 - 第一次提交这个扩展：点击「添加新项目 / Add new item」。
 - 如果你已经为它创建过项目：打开原项目，在 Package 中上传新版本，保留同一个商店项目。
 
-选择 `bitable-control-assistant-1.5.0-chrome.zip`。该 ZIP 根目录已有 manifest.json，版本为 1.5.0，不要再套一层文件夹或重新压缩整个材料包。
+选择 `bitable-control-assistant-1.5.1-chrome.zip`。该 ZIP 根目录已有 manifest.json，版本为 1.5.1，不要再套一层文件夹或重新压缩整个材料包。
 
 后台解析成功后，核对名称与版本。若提示版本必须增加，说明同一项目已上传相同或更高版本；不要只改 ZIP 文件名，需要生成递增版本的新包。
 
@@ -63,7 +63,7 @@ https://github.com/YinsenWANG/bitable-control-assistant/blob/main/PRIVACY.md
 
 **提交前快速核对**
 
-- 上传版本是 1.5.0，文件名以 `-chrome.zip` 结尾。
+- 上传版本是 1.5.1，文件名以 `-chrome.zip` 结尾。
 - 名称、描述、截图和隐私政策与本版行为一致。
 - 测试入口可用，演示表含至少三条记录、两个视图和超链接字段。
 - 电源和 Home 的组合键与 Chrome 实际设置一致。

@@ -5,7 +5,7 @@
   const timings=new Map(),adapter=new M.FeishuAdapter(notify,()=>config);
   let zoom=1,zoomRequest=0,pausedTimer,pausedHudVisible=false;
   const heldDeletes=new Set();
-  let observedDetail=null,collapseDefaultComments=false,commentIntentDetail=null,collapsingDetail=null,detailObserver,openingCommentsFromList=false;
+  let observedDetail=null,observedDetailContext=null,collapseDefaultComments=false,commentIntentDetail=null,collapsingDetail=null,detailObserver,openingCommentsFromList=false;
   // Keep the confirmed Base identity through transient DOM replacement during zoom.
   const scoped=()=>adapter.isBasePage()||!!(enabled&&seenDocument===modeKey()&&M.target(location.href));
   const modeKey=()=> 'fmr-enabled:'+location.pathname;
@@ -28,36 +28,57 @@
   // Feishu opens comments by default on some records that already have them.
   // Keep the browsing default through delayed native redraws. Explicit comment
   // interaction, speech or an existing draft gives control back to the user.
-  function keepComments(){
-    const card=adapter.card();if(!card)return;
-    commentIntentDetail=card;collapseDefaultComments=false;
+  function detailContext(card=adapter.card()){
+    if(!card)return null;
+    const scope=location.pathname+'|'+new URL(location.href).searchParams.get('table');
+    // Keep the last known identity while fields temporarily unmount. A new
+    // record ID must still reset the preference even when Feishu reuses the card.
+    const recordId=adapter.cardRecordId()||(observedDetailContext?.card===card&&observedDetailContext.scope===scope?observedDetailContext.recordId:null);
+    return {card,scope,recordId};
+  }
+  function sameDetail(a,b){
+    return !!a&&!!b&&a.scope===b.scope&&(a.recordId&&b.recordId?a.recordId===b.recordId:a.card===b.card);
+  }
+  function keepComments(open=true){
+    const context=detailContext();if(!context)return;
+    commentIntentDetail=open?context:null;collapseDefaultComments=enabled&&!open;
   }
   adapter.onCommentsIntent=keepComments;
   function commentInteraction(e,includeReceiver=true){
     const selector='.bitable-discussion-add-button, .record-discussion-container, .record-discussion-container-horizontal'+(includeReceiver?', [data-fmr-dictation]':'');
-    if(e.isTrusted&&e.target?.closest?.(selector))keepComments();
+    if(!e.isTrusted||!e.target?.closest?.(selector))return;
+    if(e.target.closest('.bitable-discussion-add-button')){
+      if(e.type==='pointerdown'||(e.type==='keydown'&&['Enter','Space'].includes(e.code)))keepComments(!adapter.commentsOpen());
+      return;
+    }
+    keepComments();
   }
   function syncDetailCollapse(){
     if(!ready)return;
     const card=scoped()?adapter.card():null;
+    const context=detailContext(card),previous=observedDetailContext;
+    observedDetailContext=context;
+    if(!sameDetail(context,previous)){
+      if(!sameDetail(commentIntentDetail,context))commentIntentDetail=null;
+      collapseDefaultComments=enabled&&!!card&&!openingCommentsFromList&&!sameDetail(commentIntentDetail,context);
+    }
+    if(sameDetail(commentIntentDetail,context))commentIntentDetail=context;
     if(card!==observedDetail){
-      const previous=observedDetail;observedDetail=card;
+      observedDetail=card;
       detailObserver?.disconnect();detailObserver=null;
       if(!card){collapseDefaultComments=false;commentIntentDetail=null;}
       else{
-        if(commentIntentDetail===previous&&previous)commentIntentDetail=card;
-        if(!previous)collapseDefaultComments=enabled&&!openingCommentsFromList&&commentIntentDetail!==card;
         detailObserver=new MutationObserver(syncDetailCollapse);
-        detailObserver.observe(card,{childList:true,subtree:true,attributes:true,attributeFilter:['class','style','hidden']});
+        detailObserver.observe(card,{childList:true,subtree:true,attributes:true,attributeFilter:['class','style','hidden','id']});
       }
     }
     if(!enabled||!card||!collapseDefaultComments)return;
-    if(adapter.hasDraft()||relay.hasPending()){keepComments();return;}
+    if(adapter.hasDraft()||(relay.hasPending()&&relay.same(relay.context(),relay.bound))){if(adapter.commentsOpen())keepComments();return;}
     if(collapsingDetail||!adapter.commentsOpen())return;
-    collapsingDetail=card;
+    const closing=context;collapsingDetail=closing;
     void adapter.closeComments().catch(()=>{
-      if(observedDetail===card){collapseDefaultComments=false;notify('评论未能自动收起，可按菜单键收起。',true);}
-    }).finally(()=>{if(collapsingDetail===card)collapsingDetail=null;syncDetailCollapse();});
+      if(observedDetail===card&&sameDetail(observedDetailContext,closing)){collapseDefaultComments=false;notify('评论未能自动收起，可按菜单键收起。',true);}
+    }).finally(()=>{if(collapsingDetail===closing)collapsingDetail=null;syncDetailCollapse();});
   }
   function pausedNotice(){
     clearTimeout(pausedTimer);pausedHudVisible=true;
@@ -103,8 +124,8 @@
       const r=await chrome.runtime.sendMessage(request);
       if(!r?.ok)throw new Error(r?.error||'无法切换全屏状态');
       enabled=value;
-      if(preserveEditor&&adapter.card()===editingCard)commentIntentDetail=editingCard;
-      collapseDefaultComments=enabled&&!!adapter.card()&&commentIntentDetail!==adapter.card();
+      if(preserveEditor&&adapter.card()===editingCard)commentIntentDetail=detailContext(editingCard);
+      collapseDefaultComments=enabled&&!!adapter.card()&&!sameDetail(commentIntentDetail,detailContext());
       clearTimeout(timer);timer=null;clearTimeout(pausedTimer);pausedHudVisible=false;
       if(!enabled)pausedNotice();
       if(remember)M.pageSession(modeKey(),String(value));

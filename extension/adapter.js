@@ -80,7 +80,7 @@
       const rect=node.getBoundingClientRect();
       return {id,node,x:rect.x,y:rect.y+rect.height/2,title:clean(node.textContent),rect};
     }
-    cardRecordId(){return this.card()?.querySelector('[id^="BITABLE_TEXT_EDITOR_CONTAINER_ID_PREFIX_rec"]')?.id.match(/PREFIX_(rec[^_]+)_/)?.[1]||null;}
+    cardRecordId(){return this.card()?.querySelector('[id^="BITABLE_TEXT_EDITOR_CONTAINER_ID_PREFIX_rec"], [id^="BITABLE_URL_EDITOR_CONTAINER_rec"]')?.id.match(/(?:PREFIX_|CONTAINER_)(rec[^_]+)_/)?.[1]||null;}
     state(){return this.commentsOpen()?(this.inputContext({target:document.activeElement})==='comment'?'评论输入':'评论浏览'):this.card()?'详情浏览':'记录列表';}
     remember(){const s=this.selected();if(s)this.memory.set(this.viewId(),{id:s.id,title:s.title,y:s.y});}
     async rows(){let data=await paint();if(!data.rows.length){await sleep(160);data=await paint();}return data;}
@@ -108,9 +108,9 @@
       if(card){
         const button=card.querySelector(direction<0?'.bitable-card-modal-header-v2-btn-prev':'.bitable-card-modal-header-v2-btn-next');
         if(!button||button.disabled||button.classList.contains('disabled')||button.getAttribute('aria-disabled')==='true'){this.notify(direction<0?'已经是第一条记录':'已经是最后一条记录');return;}
-        const old=this.cardRecordId(),comments=this.commentsOpen();button.click();
+        const old=this.cardRecordId();button.click();
         if(!await waitFor(()=>this.cardRecordId()&&this.cardRecordId()!==old))throw new Error('记录未完成切换，请稍后再试。');
-        this.clearFieldFocus?.();if(comments)await this.openComments({focus:false});this.card()?.focus({preventScroll:true});
+        this.clearFieldFocus?.();this.card()?.focus({preventScroll:true});
         this.remember();return;
       }
       const initial=this.selected();if(!initial){await this.ensureSelection();return;}
@@ -143,7 +143,6 @@
     }
     restoreHidden(){if(this.hiddenPanel){this.hiddenPanel.hidden=false;this.hiddenPanel.style.removeProperty('display');this.hiddenPanel=null;}}
     async toggleComments(){
-      this.onCommentsIntent?.();
       this.cancelCommentAutoClose();
       if(this.commentsOpen())return this.closeComments();
       await this.openComments({focus:false});
@@ -173,6 +172,7 @@
       this.notify('评论输入 · 可使用语音输入，菜单键收起评论');
     }
     async closeComments(){
+      this.onCommentsIntent?.(false);
       this.cancelCommentAutoClose();
       if(!this.commentsOpen())return;
       if(this.hasDraft()){

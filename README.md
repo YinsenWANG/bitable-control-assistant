@@ -1,7 +1,7 @@
 <p align="center"><img src="extension/icons/256.png" width="80" alt="多维表格控制助手"></p>
 <h1 align="center">多维表格控制助手</h1>
 <p align="center">把屏幕留给内容，把操作交给遥控器。</p>
-<p align="center"><a href="https://chromewebstore.google.com/detail/cajpidagedciogaoeadahcaomockfkah">Chrome 商店安装</a> · <a href="https://github.com/YinsenWANG/bitable-control-assistant/releases/latest">下载正式包</a> · <a href="docs/INSTALL.md">安装与配置</a> · <a href="docs/RELEASE-v1.5.0.md">v1.5.0 发布说明</a> · <a href="CHANGELOG.md">更新记录</a></p>
+<p align="center"><a href="https://chromewebstore.google.com/detail/cajpidagedciogaoeadahcaomockfkah">Chrome 商店安装</a> · <a href="https://github.com/YinsenWANG/bitable-control-assistant/releases/latest">下载正式包</a> · <a href="docs/INSTALL.md">安装与配置</a> · <a href="docs/RELEASE-v1.5.1.md">v1.5.1 发布说明</a> · <a href="CHANGELOG.md">更新记录</a></p>
 
 投影开会时，浏览器工具栏、文档顶部栏和数据表侧栏会挤占内容空间。为了切换记录、打开链接、补充结论，主持人还要不断回到电脑前。
 
@@ -20,7 +20,7 @@
 
 ## 三步开始
 
-1. 从 [Chrome 商店](https://chromewebstore.google.com/detail/cajpidagedciogaoeadahcaomockfkah)安装；商店新版本需要审核后才会分发。也可在 [Releases](https://github.com/YinsenWANG/bitable-control-assistant/releases/latest) 下载 `bitable-control-assistant-1.5.0-chrome.zip` 并解压，在 Chrome 的 `chrome://extensions` 开启开发者模式，加载含 `manifest.json` 的文件夹。
+1. 从 [Chrome 商店](https://chromewebstore.google.com/detail/cajpidagedciogaoeadahcaomockfkah)安装；商店新版本需要审核后才会分发。也可在 [Releases](https://github.com/YinsenWANG/bitable-control-assistant/releases/latest) 下载 `bitable-control-assistant-1.5.1-chrome.zip` 并解压，在 Chrome 的 `chrome://extensions` 开启开发者模式，加载含 `manifest.json` 的文件夹。
 2. 在扩展设置页查看组合键，将遥控器映射为相同组合。Home 与电源由 **Chrome 扩展快捷键**管理，其余动作在扩展里录入；每项都可复制键值。
 3. 打开任意有权限的飞书多维表格并刷新，按 TV（默认 **Control + Shift + 9**）进入会议。
 
@@ -43,7 +43,7 @@ Mac 想完全隐藏地址栏与标签页：在 Chrome「显示」菜单取消「
 
 **输入文字时**，方向键交给输入框与输入法；返回键只删除光标左侧的字符，空框、双击或长按都不会退出输入。需要退出时，用菜单键收起评论，或使用「退出输入 / 逐层返回（备用）」（默认 Esc）。只有非输入状态下，返回键才逐层返回。评论框中 OK 发送评论；确认发送成功后，评论默认在 1 秒后收起。可在设置中关闭自动收起，或将等待时间调整为 0–60 秒；期间开始新的输入则保留打开。收起评论会保留草稿；带草稿切换记录、视图或关闭详情时会提示先处理。
 
-会议中打开记录详情时，如果飞书默认展开了已有评论，扩展会将其收起，并覆盖首次加载和后续重绘。主动打开评论、正在评论输入或已有草稿时保留你的操作。需要评论时按菜单键，或使用已开启的语音接入。
+会议中打开记录详情或左右切换记录时，评论默认收起，覆盖首次加载、复用卡片和后续重绘。主动打开评论、正在评论输入或已有草稿时保留当前记录的操作；收起后不会因重绘自动展开。需要评论时按菜单键，或使用已开启的语音接入。
 
 TV 再按一次会退出当前 Chrome 窗口的全屏并恢复本页布局；其他仍在会议模式的表格标签页不会阻止这次主动退出。
 
@@ -90,7 +90,7 @@ TV 再按一次会退出当前 Chrome 窗口的全屏并恢复本页布局；其
 
 ## 版本、反馈与开发
 
-当前开发版 **v1.5.0**：增加保留 Fn 的语音文字接入，识别完成后自动进入评论；菜单只展开或收起；输入框内返回键始终只删除，空框也不会退出。[验证记录](docs/TESTING.md)。[发布版本](https://github.com/YinsenWANG/bitable-control-assistant/releases) · [完整更新记录](CHANGELOG.md) · [报告问题](https://github.com/YinsenWANG/bitable-control-assistant/issues)
+当前开发版 **v1.5.1**：修复详情页左右切换后评论偶发自动展开，手动和发送后收起的状态持续生效；保留 v1.5.0 的 Fn 语音文字接入和评论操作设置。[验证记录](docs/TESTING.md)。[发布版本](https://github.com/YinsenWANG/bitable-control-assistant/releases) · [完整更新记录](CHANGELOG.md) · [报告问题](https://github.com/YinsenWANG/bitable-control-assistant/issues)
 
 反馈时请提供版本、操作系统、实际组合键、列表或详情状态及复现步骤；公开反馈中请勿粘贴内部表格链接、私人记录或凭据。
 
@@ -103,6 +103,6 @@ npm run check
 npm run package
 ```
 
-源码的 `extension/` 可直接加载；`dist/` 生成可上传商店的 ZIP。146 项自动检查和实际验证范围见[验证记录](docs/TESTING.md)。发布插图源文件位于 `demo/`，不打入运行包。
+源码的 `extension/` 可直接加载；`dist/` 生成可上传商店的 ZIP。155 项自动检查和实际验证范围见[验证记录](docs/TESTING.md)。发布插图源文件位于 `demo/`，不打入运行包。
 
 MIT 开源。此项目独立开发，与飞书及其运营方没有隶属关系。
