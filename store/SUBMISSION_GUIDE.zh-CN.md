@@ -1,4 +1,4 @@
-# Chrome 商店提交指南 · v1.4.2
+# Chrome 商店提交指南 · v1.5.0
 
 你已经注册了 Chrome 开发者，可直接从开发者后台开始。准备好本版材料包后，按下面顺序提交。**上传的是扩展 ZIP，不是整个材料包，也不是 GitHub 的源码 ZIP。**
 
@@ -9,7 +9,7 @@
 - 第一次提交这个扩展：点击「添加新项目 / Add new item」。
 - 如果你已经为它创建过项目：打开原项目，在 Package 中上传新版本，保留同一个商店项目。
 
-选择 `bitable-control-assistant-1.4.2-chrome.zip`。该 ZIP 根目录已有 manifest.json，版本为 1.4.2，不要再套一层文件夹或重新压缩整个材料包。
+选择 `bitable-control-assistant-1.5.0-chrome.zip`。该 ZIP 根目录已有 manifest.json，版本为 1.5.0，不要再套一层文件夹或重新压缩整个材料包。
 
 后台解析成功后，核对名称与版本。若提示版本必须增加，说明同一项目已上传相同或更高版本；不要只改 ZIP 文件名，需要生成递增版本的新包。
 
@@ -40,7 +40,7 @@ https://github.com/YinsenWANG/bitable-control-assistant/blob/main/PRIVACY.md
 
 打开 `02-审核测试说明.md`，可直接使用其中的英文步骤。
 
-**需要发布者补充的一项：飞书测试访问方式。** 本扩展需要一个可访问的飞书多维表格；材料包没有预置账号或对外分享表。若审核团队无法使用自己的飞书账号，请建立专用演示表并通过后台 Test instructions 提供合适的访问方式或测试账号。不要填内部业务表、私人账号凭据或把凭据写入 GitHub。
+本项目已准备经发布者授权公开分享的「多维表格控制助手 · 审核演示 Review Demo」，仅含虚构数据。将 `02-审核测试说明.md` 中的专用入口和英文步骤填入后台 Test instructions。公开浏览可验证展示与导航；评论需要登录飞书并具备评论权限，也可创建个人副本测试。不要填内部业务表或私人账号凭据。
 
 同包 `审核演示数据.csv` 只有虚构内容，可导入独立测试表。将“参考链接”列改成飞书的“超链接”类型，再创建第二个视图，用于检查视图切换。公开只读表无法验证评论编辑；若需验证完整功能，应给专用测试账号适当的演示表权限。
 
@@ -63,7 +63,7 @@ https://github.com/YinsenWANG/bitable-control-assistant/blob/main/PRIVACY.md
 
 **提交前快速核对**
 
-- 上传版本是 1.4.2，文件名以 `-chrome.zip` 结尾。
+- 上传版本是 1.5.0，文件名以 `-chrome.zip` 结尾。
 - 名称、描述、截图和隐私政策与本版行为一致。
 - 测试入口可用，演示表含至少三条记录、两个视图和超链接字段。
 - 电源和 Home 的组合键与 Chrome 实际设置一致。
@@ -82,4 +82,4 @@ https://github.com/YinsenWANG/bitable-control-assistant/blob/main/PRIVACY.md
 - [审核测试说明](https://developer.chrome.com/docs/webstore/cws-dashboard-test-instructions)
 - [分发设置](https://developer.chrome.com/docs/webstore/cws-dashboard-distribution)
 
-核对日期：2026-10-23。后台文字可能调整，以当前界面为准。
+核对日期：2026-10-30。后台文字可能调整，以当前界面为准。

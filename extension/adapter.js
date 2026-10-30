@@ -34,7 +34,7 @@
     document.dispatchEvent(new CustomEvent('fmr:canvas-query',{detail:JSON.stringify({id})}));
   });}
   class FeishuAdapter {
-    constructor(notify){this.notify=notify;this.memory=new Map();this.hiddenPanel=null;this.sending=false;}
+    constructor(notify,getConfig=()=>M.DEFAULTS){this.notify=notify;this.getConfig=getConfig;this.memory=new Map();this.hiddenPanel=null;this.sending=false;this.commentCloseTimer=null;this.commentCloseCleanup=null;this.commentCloseEpoch=0;}
     isBasePage(){return !!M.target(location.href)&&!!document.querySelector('.bitable-view-menu-item[data-view-id], .faster-view, .bitable-sidebar-container, #BASE_CARD_MODAL_CONTENT_FOCUS_ID');}
     card(){return [...document.querySelectorAll('#BASE_CARD_MODAL_CONTENT_FOCUS_ID')].find(visible)||null;}
     views(){return [...document.querySelectorAll('.bitable-view-menu-item[data-view-id]')].filter(e=>!e.closest('[aria-hidden="true"]'));}
@@ -44,7 +44,34 @@
     editor(){return this.card()?.querySelector('.record-discussion-container [contenteditable="true"][data-placeholder], .record-discussion-content [contenteditable="true"]')||null;}
     commentsOpen(){return visible(this.editor())&&!this.hiddenPanel;}
     hasDraft(){const e=this.editor();return !!e&&(!!clean(e.textContent)||!!e.querySelector('img,[data-mention-id],video,[data-file-token]'));}
-    guardDraft(){if(this.hasDraft())throw new Error('当前记录有未发送的评论。请先发送或清空，再切换。');}
+    commentCount(){
+      const text=clean(this.card()?.querySelector('.record-discussion-header-text')?.textContent);
+      const match=text.match(/[（(]\s*(\d+)\s*[）)]/);
+      return match?Number(match[1]):/^(?:评论|comments?)$/i.test(text)?0:null;
+    }
+    cancelCommentAutoClose(){
+      this.commentCloseEpoch++;
+      if(this.commentCloseTimer!==null)clearTimeout(this.commentCloseTimer);
+      this.commentCloseTimer=null;this.commentCloseCleanup?.();this.commentCloseCleanup=null;
+    }
+    scheduleCommentAutoClose(card,recordId,epoch,delaySeconds){
+      const context=location.pathname+'|'+new URL(location.href).searchParams.get('table');
+      const sameRecord=()=>this.card()===card&&this.cardRecordId()===recordId&&context===location.pathname+'|'+new URL(location.href).searchParams.get('table');
+      const interrupt=e=>{
+        const target=e.target;
+        if(!target?.closest||!card.contains(target))return;
+        const comment=target.closest('.record-discussion-container, .record-discussion-container-horizontal, [data-fmr-dictation]');
+        if(comment||(e.type==='pointerdown'&&target.closest('.bitable-discussion-add-button')))this.cancelCommentAutoClose();
+      };
+      for(const type of ['beforeinput','compositionstart','pointerdown'])document.addEventListener(type,interrupt,true);
+      this.commentCloseCleanup=()=>{for(const type of ['beforeinput','compositionstart','pointerdown'])document.removeEventListener(type,interrupt,true);};
+      this.commentCloseTimer=setTimeout(()=>{
+        this.commentCloseTimer=null;this.commentCloseCleanup?.();this.commentCloseCleanup=null;
+        if(this.commentCloseEpoch!==epoch||!sameRecord()||!this.commentsOpen()||this.hasDraft()||this.dictationRelay?.hasPending())return;
+        void this.closeComments().then(()=>this.notify('评论已发送 · 已收起')).catch(error=>this.notify(error.message||'评论未能自动收起。',true));
+      },Math.round(delaySeconds*1000));
+    }
+    guardDraft(){if(this.dictationRelay?.hasPending())throw new Error('正在接收或保留语音文字，请先处理后再切换。');if(this.hasDraft())throw new Error('当前记录有未发送的评论。请先发送或清空，再切换。');}
     selected(){
       const root=document.querySelector('.faster-overlay');
       const node=root?.querySelector('[id^="BITABLE_TEXT_EDITOR_CONTAINER_ID_PREFIX_rec"], [id^="BITABLE_URL_EDITOR_CONTAINER_rec"]');
@@ -54,7 +81,7 @@
       return {id,node,x:rect.x,y:rect.y+rect.height/2,title:clean(node.textContent),rect};
     }
     cardRecordId(){return this.card()?.querySelector('[id^="BITABLE_TEXT_EDITOR_CONTAINER_ID_PREFIX_rec"]')?.id.match(/PREFIX_(rec[^_]+)_/)?.[1]||null;}
-    state(){return this.commentsOpen()?'评论输入':this.card()?'详情浏览':'记录列表';}
+    state(){return this.commentsOpen()?(this.inputContext({target:document.activeElement})==='comment'?'评论输入':'评论浏览'):this.card()?'详情浏览':'记录列表';}
     remember(){const s=this.selected();if(s)this.memory.set(this.viewId(),{id:s.id,title:s.title,y:s.y});}
     async rows(){let data=await paint();if(!data.rows.length){await sleep(160);data=await paint();}return data;}
     canvas(){return [...document.querySelectorAll('canvas[role="faster"]')].find(visible);}
@@ -83,7 +110,7 @@
         if(!button||button.disabled||button.classList.contains('disabled')||button.getAttribute('aria-disabled')==='true'){this.notify(direction<0?'已经是第一条记录':'已经是最后一条记录');return;}
         const old=this.cardRecordId(),comments=this.commentsOpen();button.click();
         if(!await waitFor(()=>this.cardRecordId()&&this.cardRecordId()!==old))throw new Error('记录未完成切换，请稍后再试。');
-        this.clearFieldFocus?.();if(comments)await this.openComments();this.card()?.focus({preventScroll:true});
+        this.clearFieldFocus?.();if(comments)await this.openComments({focus:false});this.card()?.focus({preventScroll:true});
         this.remember();return;
       }
       const initial=this.selected();if(!initial){await this.ensureSelection();return;}
@@ -115,9 +142,21 @@
       menu.click();if(!await waitFor(()=>this.card()))throw new Error('详情未能展开。');
     }
     restoreHidden(){if(this.hiddenPanel){this.hiddenPanel.hidden=false;this.hiddenPanel.style.removeProperty('display');this.hiddenPanel=null;}}
-    async toggleComments(){return this.commentsOpen()?this.closeComments():this.openComments();}
-    async openComments(){
+    async toggleComments(){
+      this.onCommentsIntent?.();
+      this.cancelCommentAutoClose();
+      if(this.commentsOpen())return this.closeComments();
+      await this.openComments({focus:false});
+      // Keep the next OK on comments instead of activating a previously selected field.
+      const stop=this.fieldStops().find(s=>s.kind==='comment');
+      if(stop)this.focusStop(stop);
+      else {this.clearFieldFocus();this.notify('评论已展开 · 按确定开始输入');}
+    }
+    async openComments({focus=true}={}){
+      this.onCommentsIntent?.();
+      this.cancelCommentAutoClose();
       if(!this.card())await this.openDetail();
+      this.onCommentsIntent?.();
       this.restoreHidden();
       if(!visible(this.editor())){
         const button=this.card().querySelector('.bitable-discussion-add-button');
@@ -125,12 +164,16 @@
       }
       const editor=await waitFor(()=>visible(this.editor())&&this.editor());
       if(!editor)throw new Error('评论输入框不可用，请检查评论权限。');
+      if(!focus){this.card()?.focus({preventScroll:true});return;}
+      const selection=getSelection(),keepCaret=editor.contains(document.activeElement)&&editor.contains(selection?.anchorNode);
       editor.focus({preventScroll:false});
       if(!editor.contains(document.activeElement)&&document.activeElement!==editor)throw new Error('未能聚焦评论输入框。');
       // Preserve the cursor if already inside this editor; otherwise append dictation.
-      const selection=getSelection();if(!selection?.anchorNode||!editor.contains(selection.anchorNode)){const r=document.createRange();r.selectNodeContents(editor);r.collapse(false);selection.removeAllRanges();selection.addRange(r);}
+      if(selection&&!keepCaret){const r=document.createRange();r.selectNodeContents(editor);r.collapse(false);selection.removeAllRanges();selection.addRange(r);}
+      this.notify('评论输入 · 可使用语音输入，菜单键收起评论');
     }
     async closeComments(){
+      this.cancelCommentAutoClose();
       if(!this.commentsOpen())return;
       if(this.hasDraft()){
         const panel=this.editor().closest('.record-discussion-container-horizontal')||this.editor().closest('.record-discussion-container');
@@ -139,7 +182,8 @@
         this.card().focus({preventScroll:true});this.notify('评论已收起，草稿保留在当前记录');return;
       }
       this.card().querySelector('.bitable-discussion-add-button')?.click();
-      await waitFor(()=>!visible(this.editor()),600);this.card()?.focus({preventScroll:true});
+      if(!await waitFor(()=>!visible(this.editor()),600))throw new Error('评论未能收起，请稍后再试。');
+      this.card()?.focus({preventScroll:true});
     }
     async closeDetail(){
       this.guardDraft();if(!this.card())return;this.remember();
@@ -147,7 +191,7 @@
       if(!await waitFor(()=>!this.card()))throw new Error('详情未能关闭。');
       this.clearFieldFocus?.();this.focusGrid();
     }
-    async back(){this.cancelEmptyReturn();if(this.leaveInput())return;if(this.commentsOpen())return this.closeComments();if(this.card())return this.closeDetail();this.notify('已经回到记录列表');}
+    async back(){if(this.leaveInput())return;if(this.commentsOpen())return this.closeComments();if(this.card())return this.closeDetail();this.notify('已经回到记录列表');}
     async switchView(direction,requestedId){
       this.guardDraft();this.remember();await this.closeDetail();
       const views=this.views(),current=views.indexOf(this.view()),target=requestedId?views.find(e=>e.getAttribute('data-view-id')===requestedId):views[current+direction];
@@ -225,15 +269,43 @@
       M.pageSession('fmr-sidebar:'+original.path,null);
     }
     async send(){
+      if(this.dictationRelay?.hasPending())throw new Error('语音文字尚未完成接入，请稍候再发送。');
       if(this.sending)return;
+      this.cancelCommentAutoClose();
       const editor=this.editor();if(!visible(editor))throw new Error('请先打开评论输入框。');
       if(!this.hasDraft()){this.notify('评论还没有内容');editor.focus();return;}
-      const button=this.card().querySelector('.bitable-discussion__reply__send-btn-wrap_new_ui');
+      const card=this.card(),recordId=this.cardRecordId(),beforeCount=this.commentCount(),epoch=this.commentCloseEpoch;
+      const button=card.querySelector('.bitable-discussion__reply__send-btn-wrap_new_ui');
       if(!button||/disabled/.test(button.className)||button.getAttribute('aria-disabled')==='true')throw new Error('评论暂时不能发送，请稍候。');
       this.sending=true;this.notify('正在发送评论…');
-      try {button.click();if(!await waitFor(()=>!this.hasDraft(),4500))throw new Error('未确认评论发送成功，请检查飞书中的结果后再试。');this.notify('评论已发送');this.editor()?.focus({preventScroll:true});}finally{this.sending=false;}
+      try {
+        button.click();
+        if(!await waitFor(()=>{
+          if(this.card()!==card||this.cardRecordId()!==recordId||!this.editor()||this.hasDraft())return false;
+          const afterCount=this.commentCount();return beforeCount===null||(afterCount!==null&&afterCount>beforeCount);
+        },4500))throw new Error('未确认评论发送成功，请检查飞书中的结果后再试。');
+        const config=this.getConfig(),willClose=this.commentCloseEpoch===epoch&&config.autoCloseComments;
+        this.notify(willClose?(config.commentCloseDelay===0?'评论已发送，即将收起':`评论已发送，${config.commentCloseDelay} 秒后收起`):'评论已发送');
+        if(willClose)this.scheduleCommentAutoClose(card,recordId,epoch,config.commentCloseDelay);
+      }finally{this.sending=false;}
     }
-    async confirm(){if(!this.card())return this.openDetail();if(this.inputContext({target:document.activeElement})==='comment')return this.send();if(await this.activateField())return;if(!this.commentsOpen())return this.openComments();return this.openComments();}
+    async confirm(){if(this.dictationRelay?.hasPending())throw new Error('语音文字尚未完成接入，请稍候再操作。');if(!this.card())return this.openDetail();if(this.inputContext({target:document.activeElement})==='comment')return this.send();if(await this.activateField())return;return this.openComments();}
+    async appendDictation(text,bound,isCurrent){
+      if(!isCurrent()||this.card()!==bound.card)throw new Error('记录已变化，语音文字已保留。');
+      await this.openComments();
+      if(!isCurrent()||this.card()!==bound.card)throw new Error('输入法或记录已变化，语音文字已保留。');
+      const editor=this.editor(),before=editor.textContent||'',selection=getSelection(),range=document.createRange();
+      range.selectNodeContents(editor);range.collapse(false);selection.removeAllRanges();selection.addRange(range);
+      document.execCommand('insertText',false,text);
+      // Allow the native editor to reconcile its input state before releasing
+      // our backup; a DOM insertion alone must not be mistaken for a saved draft.
+      await sleep(0);
+      // Native contenteditable may represent line breaks as block boundaries.
+      const plain=s=>s.replace(/[\r\n\u200b\ufeff]/g,'').replace(/\u00a0/g,' ');
+      const current=this.editor();
+      if(!isCurrent()||!current||plain(current.textContent||'')!==plain(before+text))throw new Error('未能确认语音文字完整写入，原文已保留；请先核对评论，避免重复。');
+      if(current!==editor){current.focus({preventScroll:true});range.selectNodeContents(current);range.collapse(false);selection.removeAllRanges();selection.addRange(range);}
+    }
     scroll(direction){
       const root=this.commentsOpen()?this.editor()?.closest('.record-discussion-container'):this.card();
       if(!root){const canvas=this.canvas();canvas?.dispatchEvent(new WheelEvent('wheel',{deltaY:direction*400,bubbles:true,cancelable:true}));return;}
@@ -248,22 +320,18 @@
       if(editor.matches('input,textarea'))return editor.value.length===0;
       return !(editor.textContent||'').replace(/[\u200b\ufeff]/g,'')&&!editor.querySelector('img,video,audio,[data-mention-id],[data-file-token]');
     }
-    cancelEmptyReturn(){this.emptyReturn=null;}
     async deleteBackward(){
       const e=document.activeElement;if(!e)return;
       const editable=e.isContentEditable||e.matches('textarea,input:not([type="button"]):not([type="checkbox"])');
       if(!editable||!['comment','other','grid-edit'].includes(this.inputContext({target:e})))return this.back();
-      if(this.inputIsEmpty()){
-        const editor=e.closest('input,textarea,[contenteditable="true"]'),now=Date.now(),previous=this.emptyReturn;
-        if(previous?.editor===editor&&now>=previous.at&&now-previous.at<=500)return this.back();
-        this.emptyReturn={editor,at:now};this.notify('0.5 秒内再按一次返回，退出输入');return;
-      }
-      this.cancelEmptyReturn();
+      // Empty editors stay active, even after repeated or held deletion.
+      if(this.inputIsEmpty())return;
       // Browser editing commands preserve the editor's input events and undo stack.
       document.execCommand('delete',false);
     }
     inputContext(e){
       const node=e.target?.nodeType===1?e.target:document.activeElement;
+      if(node?.closest('[data-fmr-dictation]'))return 'relay';
       // URL field links inherit contenteditable from Feishu's rich-text wrapper.
       // A link explicitly focused by field navigation is still an action, not a caret.
       if(this.fieldFocus?.element===node&&node.hasAttribute('data-fmr-target'))return 'none';

@@ -2,12 +2,63 @@
   'use strict';
   const M=globalThis.MeetingRemote;
   let config=M.DEFAULTS,enabled=false,ready=false,busy=false,changingMode=false,composing=false,compositionEnded=0,host,shadow,status,timer,seenDocument=null;
-  const timings=new Map(),adapter=new M.FeishuAdapter(notify);
+  const timings=new Map(),adapter=new M.FeishuAdapter(notify,()=>config);
   let zoom=1,zoomRequest=0,pausedTimer,pausedHudVisible=false;
   const heldDeletes=new Set();
+  let observedDetail=null,collapseDefaultComments=false,commentIntentDetail=null,collapsingDetail=null,detailObserver,openingCommentsFromList=false;
   // Keep the confirmed Base identity through transient DOM replacement during zoom.
   const scoped=()=>adapter.isBasePage()||!!(enabled&&seenDocument===modeKey()&&M.target(location.href));
   const modeKey=()=> 'fmr-enabled:'+location.pathname;
+  const relay=new M.DictationRelay({
+    context:()=>{
+      if(!ready||!enabled||!config.voiceRelay||!scoped())return null;
+      const card=adapter.card();if(!card)return null;
+      const active=document.activeElement,input=adapter.inputContext({target:active});
+      // Feishu initially focuses the modal drawer around the card, before any
+      // field has focus. That is still record browsing, not another editor.
+      const drawer=active?.matches?.('[role="dialog"][aria-modal="true"]')&&active.contains(card);
+      const inside=active===document.body||active===document.documentElement||card.contains(active)||drawer;
+      const popup=adapter.editorPopupOpen();
+      const browsing=inside&&['none','grid','relay'].includes(input)&&!popup;
+      return {card,key:location.pathname+'|'+new URL(location.href).searchParams.get('table')+'|'+adapter.cardRecordId(),canArm:browsing,canDeliver:browsing||(input==='comment'&&!popup)};
+    },
+    deliver:(text,bound,isCurrent)=>adapter.appendDictation(text,bound,isCurrent),notify
+  });
+  adapter.dictationRelay=relay;
+  // Feishu opens comments by default on some records that already have them.
+  // Keep the browsing default through delayed native redraws. Explicit comment
+  // interaction, speech or an existing draft gives control back to the user.
+  function keepComments(){
+    const card=adapter.card();if(!card)return;
+    commentIntentDetail=card;collapseDefaultComments=false;
+  }
+  adapter.onCommentsIntent=keepComments;
+  function commentInteraction(e,includeReceiver=true){
+    const selector='.bitable-discussion-add-button, .record-discussion-container, .record-discussion-container-horizontal'+(includeReceiver?', [data-fmr-dictation]':'');
+    if(e.isTrusted&&e.target?.closest?.(selector))keepComments();
+  }
+  function syncDetailCollapse(){
+    if(!ready)return;
+    const card=scoped()?adapter.card():null;
+    if(card!==observedDetail){
+      const previous=observedDetail;observedDetail=card;
+      detailObserver?.disconnect();detailObserver=null;
+      if(!card){collapseDefaultComments=false;commentIntentDetail=null;}
+      else{
+        if(commentIntentDetail===previous&&previous)commentIntentDetail=card;
+        if(!previous)collapseDefaultComments=enabled&&!openingCommentsFromList&&commentIntentDetail!==card;
+        detailObserver=new MutationObserver(syncDetailCollapse);
+        detailObserver.observe(card,{childList:true,subtree:true,attributes:true,attributeFilter:['class','style','hidden']});
+      }
+    }
+    if(!enabled||!card||!collapseDefaultComments)return;
+    if(adapter.hasDraft()||relay.hasPending()){keepComments();return;}
+    if(collapsingDetail||!adapter.commentsOpen())return;
+    collapsingDetail=card;
+    void adapter.closeComments().catch(()=>{
+      if(observedDetail===card){collapseDefaultComments=false;notify('评论未能自动收起，可按菜单键收起。',true);}
+    }).finally(()=>{if(collapsingDetail===card)collapsingDetail=null;syncDetailCollapse();});
+  }
   function pausedNotice(){
     clearTimeout(pausedTimer);pausedHudVisible=true;
     pausedTimer=setTimeout(()=>{pausedHudVisible=false;update();},3000);
@@ -32,32 +83,38 @@
     document.documentElement.append(host);update();
   }
   function update(){
-    syncPresentation();if(!host)return;host.hidden=!scoped()||(enabled?!config.showHud:!pausedHudVisible);
+    syncPresentation();syncDetailCollapse();if(!host)return;host.hidden=!scoped()||(enabled?!config.showHud:!pausedHudVisible);
     shadow.querySelector('.bar').classList.toggle('paused',!enabled);
     const setText=(el,text)=>{if(el.textContent!==text)el.textContent=text;};
     status.style.color='#fff';setText(status,enabled?adapter.state()+' · '+Math.round(zoom*100)+'%':'会议模式已关闭');
-    setText(shadow.querySelector('.help'),enabled?`${adapter.card()?'上下浏览字段 · 左右换记录':'上下换记录 · 左右换视图'}　${M.label(config.bindings.confirm)} 确定　${M.label(config.bindings.deleteBackward)} 返回`:`按 ${M.label(config.bindings.toggle)} 进入全屏 · ${adapter.viewName()}`);
+    setText(shadow.querySelector('.help'),enabled?`${adapter.card()?'上下浏览字段 · 左右换记录':'上下换记录 · 左右换视图'}　${M.label(config.bindings.confirm)} 确定　${M.label(config.bindings.deleteBackward)} 删除 / 返回`:`按 ${M.label(config.bindings.toggle)} 进入全屏 · ${adapter.viewName()}`);
     setText(shadow.querySelector('.toggle'),enabled?'退出会议':'进入全屏');
+    relay.sync();
   }
   async function zoomAction(direction){const request=++zoomRequest;const r=await chrome.runtime.sendMessage({type:'zoom',direction});if(!r?.ok)throw new Error(r?.error||'缩放失败');if(request!==zoomRequest)return;zoom=r.zoom;if(enabled)notify((direction>0&&zoom>=2.5?'已到最大缩放 ':direction<0&&zoom<=.5?'已到最小缩放 ':'缩放 ')+Math.round(zoom*100)+'%');}
   async function setEnabled(value,remember=true){
-    adapter.cancelEmptyReturn();
     if(changingMode)return {ok:false,error:'正在切换会议模式'};
+    const editingCard=value&&adapter.card();
+    const preserveEditor=editingCard&&adapter.inputContext({target:document.activeElement})==='comment';
     changingMode=true;
     try {
-      const r=await chrome.runtime.sendMessage({type:'presentation',enabled:value});
+      const request={type:'presentation',enabled:value};
+      if(!value&&remember)request.exitFullscreen=true;
+      const r=await chrome.runtime.sendMessage(request);
       if(!r?.ok)throw new Error(r?.error||'无法切换全屏状态');
       enabled=value;
+      if(preserveEditor&&adapter.card()===editingCard)commentIntentDetail=editingCard;
+      collapseDefaultComments=enabled&&!!adapter.card()&&commentIntentDetail!==adapter.card();
       clearTimeout(timer);timer=null;clearTimeout(pausedTimer);pausedHudVisible=false;
       if(!enabled)pausedNotice();
       if(remember)M.pageSession(modeKey(),String(value));
-      if(!enabled){adapter.restoreHidden();adapter.clearFieldFocus();}
+      if(!enabled){adapter.cancelCommentAutoClose();adapter.restoreHidden();adapter.clearFieldFocus();}
       update();
       try{if(enabled)await adapter.collapseSidebarForMeeting();else await adapter.restoreMeetingSidebar();}catch(e){notify(e.message,true);}
       if(enabled&&!adapter.card()){try{await adapter.ensureSelection();}catch(e){notify(e.message,true);}}
       return {ok:true,enabled};
     }catch(e){notify(e.message,true);return {ok:false,error:e.message};}
-    finally{changingMode=false;}
+    finally{changingMode=false;relay.sync();}
   }
   async function syncPage(){
     if(changingMode)return;
@@ -77,7 +134,6 @@
     update();
   }
   async function run(action){
-    if(action!=='deleteBackward')adapter.cancelEmptyReturn();
     if(!ready||!scoped())return {ok:false,error:'请打开飞书多维表格。'};
     if(action==='toggle')return setEnabled(!enabled);
     if(action==='reloadPage'){
@@ -91,7 +147,7 @@
       catch(e){if(enabled)notify(e.message,true);return {ok:false,error:e.message};}
     }
     if(busy)return {ok:false,error:'上一项操作尚未完成'};
-    busy=true;
+    busy=true;openingCommentsFromList=!adapter.card()&&['toggleComments','openComments'].includes(action);
     try{
       switch(action){
         case 'navigateUp':adapter.card()?adapter.moveField(-1):await adapter.moveRecord(-1);break;
@@ -116,30 +172,28 @@
         default:throw new Error('未知动作');
       }
       if(!timer)update();return {ok:true,enabled,state:adapter.state()};
-    }catch(error){notify(error.message,true);return {ok:false,error:error.message};}finally{busy=false;}
+    }catch(error){notify(error.message,true);return {ok:false,error:error.message};}finally{busy=false;openingCommentsFromList=false;relay.sync();}
   }
-  for(const type of ['input','beforeinput','focusin','focusout','pointerdown'])window.addEventListener(type,()=>adapter.cancelEmptyReturn(),true);
-  window.addEventListener('blur',()=>{heldDeletes.clear();adapter.cancelEmptyReturn();});
+  window.addEventListener('blur',()=>heldDeletes.clear());
+  document.addEventListener('pointerdown',commentInteraction,true);
+  document.addEventListener('beforeinput',commentInteraction,true);
   window.addEventListener('keyup',e=>{if(e.isTrusted)heldDeletes.delete(e.code);},true);
-  window.addEventListener('compositionstart',()=>{composing=true;adapter.cancelEmptyReturn();},true);
+  window.addEventListener('compositionstart',e=>{composing=true;commentInteraction(e);},true);
   window.addEventListener('compositionend',()=>{composing=false;compositionEnded=Date.now();},true);
   window.addEventListener('keydown',e=>{
+    commentInteraction(e,false);
+    if(e.isTrusted&&e.code==='Tab'&&adapter.commentsOpen())keepComments();
     if(!ready||!e.isTrusted)return;
-    if(composing||e.isComposing||e.keyCode===229){adapter.cancelEmptyReturn();return;}
+    if(composing||e.isComposing||e.keyCode===229)return;
     const chord=M.chord(e),action=M.actionFor(chord,config);
-    if(chord&&action?.id!=='deleteBackward')adapter.cancelEmptyReturn();
     if(!action||(!enabled&&!['toggle','reloadPage'].includes(action.id))||!scoped())return;
     // Volume keys bypass field/popup layout inspection and remain usable on HUD buttons.
     if(M.isZoom(action.id)){if(config.nativeBindings[action.id])return;e.preventDefault();e.stopImmediatePropagation();void run(action.id);return;}
-    if(e.composedPath().includes(host))return;
+    if(e.composedPath().includes(host)||relay.ownsEvent(e))return;
     const context=adapter.inputContext(e);
-    const emptyInput=action.id==='deleteBackward'&&adapter.inputIsEmpty();
     const repeat=e.repeat||(action.id==='deleteBackward'&&heldDeletes.has(e.code));
-    if(action.id==='deleteBackward'){
-      heldDeletes.add(e.code);
-      if(!emptyInput||repeat)adapter.cancelEmptyReturn();
-    }
-    const policy=M.inputPolicy(action,chord,context,{native:config.nativeBindings[action.id],popup:adapter.editorPopupOpen(),emptyInput,repeat});
+    if(action.id==='deleteBackward')heldDeletes.add(e.code);
+    const policy=M.inputPolicy(action,chord,context,{native:config.nativeBindings[action.id],popup:adapter.editorPopupOpen(),repeat});
     if(policy==='pass'||policy==='native')return;
     if(context==='comment'&&Date.now()-compositionEnded<200&&['confirm','sendComment'].includes(action.id))return;
     if(policy==='caret'){e.preventDefault();e.stopImmediatePropagation();adapter.moveCaret(M.DIRECTIONS[action.id]);return;}
@@ -151,12 +205,16 @@
     if(e.repeat&&time-last<delay)return;timings.set(action.id,time);void run(action.id);
   },true);
   chrome.runtime.onMessage.addListener((msg,_sender,respond)=>{
-    if(msg?.type==='meeting-zoom'&&Number.isFinite(msg.zoom)&&msg.zoom>=.25&&msg.zoom<=5){++zoomRequest;adapter.cancelEmptyReturn();zoom=msg.zoom;if(enabled)notify('缩放 '+Math.round(zoom*100)+'%');respond({ok:true});return;}
-    if(msg?.type==='meeting-status'){respond({ok:true,enabled,scoped:scoped(),state:adapter.state(),view:adapter.viewName(),draft:adapter.hasDraft(),version:chrome.runtime.getManifest().version});return;}
+    if(msg?.type==='meeting-zoom'&&Number.isFinite(msg.zoom)&&msg.zoom>=.25&&msg.zoom<=5){++zoomRequest;zoom=msg.zoom;if(enabled)notify('缩放 '+Math.round(zoom*100)+'%');respond({ok:true});return;}
+    if(msg?.type==='meeting-status'){respond({ok:true,enabled,scoped:scoped(),state:adapter.state(),view:adapter.viewName(),draft:adapter.hasDraft()||relay.hasPending(),version:chrome.runtime.getManifest().version});return;}
     if(msg?.type==='meeting-action'&&M.ACTIONS.some(a=>a.id===msg.action)){run(msg.action).then(respond);return true;}
   });
   chrome.storage.onChanged.addListener((changes,area)=>{
-    if(area==='local'&&changes.config){try{config=M.config(changes.config.newValue);adapter.cancelEmptyReturn();update();}catch(e){notify(e.message,true);}}
+    if(area==='local'&&changes.config){try{
+      const next=M.config(changes.config.newValue);
+      if(next.autoCloseComments!==config.autoCloseComments||next.commentCloseDelay!==config.commentCloseDelay)adapter.cancelCommentAutoClose();
+      config=next;update();
+    }catch(e){notify(e.message,true);}}
   });
   async function init(){
     try{config=M.config((await chrome.storage.local.get('config')).config);}catch{config=M.config();}
@@ -164,17 +222,17 @@
     try{const r=await chrome.runtime.sendMessage({type:'get-zoom'});if(r.ok)zoom=r.zoom;}catch{}
     // Observe page transitions without repeatedly searching or touching application data.
     let scheduled=false;
-    new MutationObserver(()=>{if(scheduled)return;scheduled=true;setTimeout(()=>{scheduled=false;if(!host?.isConnected)mount();void syncPage();if(!timer)update();},250);}).observe(document.body,{childList:true,subtree:true});
+    new MutationObserver(()=>{syncDetailCollapse();if(scheduled)return;scheduled=true;setTimeout(()=>{scheduled=false;if(!host?.isConnected)mount();void syncPage();if(!timer)update();},250);}).observe(document.body,{childList:true,subtree:true});
     window.addEventListener('popstate',()=>void syncPage());
     window.addEventListener('pagehide',()=>{
-      heldDeletes.clear();adapter.cancelEmptyReturn();
+      heldDeletes.clear();
       if(enabled)void chrome.runtime.sendMessage({type:'presentation',enabled:false}).catch(()=>{});
     });
     // A BFCache restore resumes the old script without rerunning init. Rejoin
     // the background meeting session that pagehide released, preserving drafts.
     window.addEventListener('pageshow',e=>{
       if(!e.persisted)return;
-      heldDeletes.clear();adapter.cancelEmptyReturn();
+      heldDeletes.clear();
       if(enabled&&scoped())void setEnabled(true,false);else void syncPage();
     });
     await syncPage();update();

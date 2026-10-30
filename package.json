@@ -1,6 +1,6 @@
 {
   "name": "bitable-control-assistant",
-  "version": "1.4.2",
+  "version": "1.5.0",
   "private": true,
   "description": "Customizable Chrome meeting controls for Feishu Base",
   "license": "MIT",

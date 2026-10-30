@@ -6,8 +6,13 @@
     if(!value){feedback('当前没有可复制的快捷键',true);return;}
     try{await navigator.clipboard.writeText(value);feedback('已复制键值：'+value);}catch{feedback('复制失败，请重试或手动复制键值',true);}
   }
+  function syncCommentCloseControl(){
+    const input=$('commentCloseDelay');input.disabled=!$('autoCloseComments').checked;
+    const raw=input.value.trim(),value=Number(raw);
+    if(input.disabled&&(!raw||!Number.isFinite(value)||value<0||value>60))input.value=config.commentCloseDelay;
+  }
   function render(includeSettings=true){
-    if(includeSettings){$('autoEnable').checked=config.autoEnable;$('showHud').checked=config.showHud;$('hideHeader').checked=config.hideHeader;$('zoomStep').value=config.zoomStep;}
+    if(includeSettings){$('autoEnable').checked=config.autoEnable;$('showHud').checked=config.showHud;$('hideHeader').checked=config.hideHeader;$('zoomStep').value=config.zoomStep;$('voiceRelay').checked=config.voiceRelay;$('autoCloseComments').checked=config.autoCloseComments;$('commentCloseDelay').value=config.commentCloseDelay;syncCommentCloseControl();}
     $('bindings').replaceChildren();
     for(const a of M.ACTIONS){
       const row=document.createElement('tr');row.dataset.action=a.id;
@@ -29,7 +34,11 @@
     }
   }
   function paintRecording(){for(const row of $('bindings').children){const active=row.dataset.action===recording;row.classList.toggle('recording',active);row.querySelector('.record-btn').textContent=active?'取消':'录入';row.querySelector('kbd').textContent=active?'请按组合键…':M.label(M.bindingFor(row.dataset.action,config));}}
-  function readForm(){return M.config({...config,autoEnable:$('autoEnable').checked,showHud:$('showHud').checked,hideHeader:$('hideHeader').checked,zoomStep:Number($('zoomStep').value)});}
+  function readForm(){
+    const enabled=$('autoCloseComments').checked,raw=$('commentCloseDelay').value.trim();
+    if(enabled&&!raw)throw new Error('请填写评论自动收起时间（秒）。');
+    return M.config({...config,autoEnable:$('autoEnable').checked,showHud:$('showHud').checked,hideHeader:$('hideHeader').checked,zoomStep:Number($('zoomStep').value),voiceRelay:$('voiceRelay').checked,autoCloseComments:enabled,commentCloseDelay:raw?Number(raw):config.commentCloseDelay});
+  }
   document.addEventListener('keydown',e=>{
     if(!recording&&!testing)return;
     e.preventDefault();e.stopImmediatePropagation();
@@ -44,12 +53,12 @@
     config.bindings[recording]=value;if(M.NATIVE[recording])config.nativeBindings[recording]=false;recording=null;dirty=true;render(false);feedback('已录入 '+M.label(value)+'，保存后生效');
   },true);
   $('testToggle').onclick=()=>{testing=!testing;recording=null;paintRecording();$('testToggle').textContent=testing?'停止检测':'开始检测';feedback(testing?'检测中：按键仅显示，不执行动作':'检测已停止');};
-  for(const id of ['autoEnable','showHud','hideHeader','zoomStep'])$(id).addEventListener('input',()=>{dirty=true;});
-  $('save').onclick=async()=>{try{config=readForm();await chrome.storage.local.set({config});dirty=false;feedback('已保存，打开的飞书页面会立即应用新按键');}catch(e){feedback(e.message,true);}};
+  for(const id of ['autoEnable','showHud','hideHeader','zoomStep','voiceRelay','autoCloseComments','commentCloseDelay'])$(id).addEventListener('input',()=>{dirty=true;if(id==='autoCloseComments')syncCommentCloseControl();});
+  $('save').onclick=async()=>{try{config=readForm();await chrome.storage.local.set({config});dirty=false;feedback('已保存，打开的飞书页面会立即应用设置');}catch(e){feedback(e.message,true);}};
   $('restore').onclick=()=>{config.bindings={...M.DEFAULTS.bindings};config.nativeBindings={...M.DEFAULTS.nativeBindings};recording=null;dirty=true;render(false);feedback('已恢复默认按键，保存后生效');};
-  $('export').onclick=()=>{try{const data=readForm();const url=URL.createObjectURL(new Blob([JSON.stringify({format:'bitable-control-assistant',version:6,config:data},null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='多维表格控制助手-按键配置.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(e){feedback(e.message,true);}};
+  $('export').onclick=()=>{try{const data=readForm();const url=URL.createObjectURL(new Blob([JSON.stringify({format:'bitable-control-assistant',version:7,config:data},null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='多维表格控制助手-按键配置.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}catch(e){feedback(e.message,true);}};
   $('import').onclick=()=>$('importFile').click();
-  $('importFile').onchange=async()=>{const file=$('importFile').files[0];if(!file)return;try{if(file.size>64000)throw new Error('配置文件过大');const obj=JSON.parse(await file.text());if(!['bitable-control-assistant','feishu-meeting-remote'].includes(obj.format)||![1,2,3,4,5,6].includes(obj.version))throw new Error('不是此扩展的配置文件');config=M.config(obj.config);recording=null;dirty=true;render();feedback('已导入，请检查后保存');}catch(e){feedback('导入失败：'+e.message,true);}finally{$('importFile').value='';}};
+  $('importFile').onchange=async()=>{const file=$('importFile').files[0];if(!file)return;try{if(file.size>64000)throw new Error('配置文件过大');const obj=JSON.parse(await file.text());if(!['bitable-control-assistant','feishu-meeting-remote'].includes(obj.format)||![1,2,3,4,5,6,7].includes(obj.version))throw new Error('不是此扩展的配置文件');config=M.config(obj.config);recording=null;dirty=true;render();feedback('已导入，请检查后保存');}catch(e){feedback('导入失败：'+e.message,true);}finally{$('importFile').value='';}};
   async function refreshGlobalShortcuts(){
     const rows=[['return-to-meeting','meetingShortcut','copyMeetingShortcut'],['reload-current-tab','reloadShortcut','copyReloadShortcut']];
     try{

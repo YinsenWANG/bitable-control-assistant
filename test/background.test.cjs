@@ -70,6 +70,46 @@ test('two meeting tabs share fullscreen ownership without an early restore',asyn
   await f.message({type:'presentation',enabled:false});assert.equal(f.state.windows.get(10).state,'fullscreen');
   await f.message({type:'presentation',enabled:false},f.sender(2));assert.equal(f.state.windows.get(10).state,'normal');
 });
+test('an explicit TV exit restores the window while another meeting tab remains available',async()=>{
+  const f=fixture();f.state.tabs.get(2).url='https://second.feishu.cn/base/Base456';
+  await f.message({type:'presentation',enabled:true});await f.message({type:'presentation',enabled:true},f.sender(2));
+  assert.equal((await f.message({type:'presentation',enabled:false,exitFullscreen:true})).ok,true);
+  assert.equal(f.state.windows.get(10).state,'normal');assert.deepEqual(f.state.session.meetingWindows[10].tabs,[2]);
+  await f.command('return-to-meeting');assert.equal(f.state.tabs.get(2).active,true);
+});
+test('TV exits fullscreen after extension reload has cleared its ownership record',async()=>{
+  const first=fixture();await first.message({type:'presentation',enabled:true});first.state.session={};
+  const reloaded=fixture(first.state);await reloaded.message({type:'presentation',enabled:true});
+  assert.equal(reloaded.state.session.meetingWindows[10].owned,false);
+  assert.equal((await reloaded.message({type:'presentation',enabled:false,exitFullscreen:true})).ok,true);
+  assert.equal(reloaded.state.windows.get(10).state,'normal');
+  reloaded.state.windows.get(10).state='fullscreen';
+  assert.equal((await reloaded.message({type:'presentation',enabled:false,exitFullscreen:true})).ok,true);
+  assert.equal(reloaded.state.windows.get(10).state,'normal');
+});
+test('a rejected fullscreen exit keeps the meeting registered so TV can retry',async()=>{
+  const f=fixture();f.state.windows.get(10).state='maximized';await f.message({type:'presentation',enabled:true});
+  const update=f.chrome.windows.update;f.chrome.windows.update=async()=>{throw new Error('Window transition rejected');};
+  const failed=await f.message({type:'presentation',enabled:false,exitFullscreen:true});
+  assert.equal(failed.ok,false);assert.equal(f.state.windows.get(10).state,'fullscreen');assert.deepEqual(f.state.session.meetingWindows[10].tabs,[1]);
+  f.chrome.windows.update=update;assert.equal((await f.message({type:'presentation',enabled:false,exitFullscreen:true})).ok,true);
+  assert.equal(f.state.windows.get(10).state,'maximized');
+});
+test('TV waits for an asynchronous native fullscreen exit to finish',async()=>{
+  const f=fixture();await f.message({type:'presentation',enabled:true});const get=f.chrome.windows.get;let exiting=false,checks=0;
+  f.chrome.windows.update=async(id,change)=>{exiting=change.state==='normal';return get(id);};
+  f.chrome.windows.get=async id=>{if(exiting&&++checks===2)f.state.windows.get(id).state='normal';return get(id);};
+  assert.equal((await f.message({type:'presentation',enabled:false,exitFullscreen:true})).ok,true);
+  assert.equal(f.state.windows.get(10).state,'normal');assert.ok(checks>=2);
+});
+test('only a supported Base can explicitly exit its window; cleanup remains available after navigation',async()=>{
+  const f=fixture();await f.message({type:'presentation',enabled:true});
+  assert.equal((await f.message({type:'presentation',enabled:false,exitFullscreen:true},f.sender(2))).ok,false);
+  assert.equal((await f.message({type:'presentation',enabled:false,exitFullscreen:'yes'})).ok,false);
+  assert.equal(f.state.windows.get(10).state,'fullscreen');
+  f.state.tabs.get(1).url='https://example.org/after-navigation';
+  assert.equal((await f.message({type:'presentation',enabled:false})).ok,true);assert.equal(f.state.windows.get(10).state,'normal');
+});
 test('Home never replaces or reopens an unrelated page after the meeting has ended',async()=>{
   const f=fixture();await f.message({type:'presentation',enabled:true});
   f.state.tabs.get(1).url='https://example.org/unsaved-form';

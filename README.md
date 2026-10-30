@@ -1,7 +1,7 @@
 <p align="center"><img src="extension/icons/256.png" width="80" alt="多维表格控制助手"></p>
 <h1 align="center">多维表格控制助手</h1>
 <p align="center">把屏幕留给内容，把操作交给遥控器。</p>
-<p align="center"><a href="https://github.com/YinsenWANG/bitable-control-assistant/releases/latest">下载最新版</a> · <a href="docs/INSTALL.md">安装与配置</a> · <a href="store/SUBMISSION_GUIDE.zh-CN.md">Chrome 商店提交指南</a> · <a href="CHANGELOG.md">更新记录</a></p>
+<p align="center"><a href="https://chromewebstore.google.com/detail/cajpidagedciogaoeadahcaomockfkah">Chrome 商店安装</a> · <a href="https://github.com/YinsenWANG/bitable-control-assistant/releases/latest">下载正式包</a> · <a href="docs/INSTALL.md">安装与配置</a> · <a href="docs/RELEASE-v1.5.0.md">v1.5.0 发布说明</a> · <a href="CHANGELOG.md">更新记录</a></p>
 
 投影开会时，浏览器工具栏、文档顶部栏和数据表侧栏会挤占内容空间。为了切换记录、打开链接、补充结论，主持人还要不断回到电脑前。
 
@@ -16,11 +16,11 @@
 - **看得更完整**：保留表格视图与操作区，收起会议中用不到的导航区域。
 - **离开电脑也能推进**：上下浏览记录、左右切视图；进入详情后上下浏览字段、左右切记录。
 - **打开链接还能回来**：确认键打开超链接；Home 找回会议表格；电源刷新当前标签页，包括 GitHub。
-- **讨论与记录连起来**：菜单键展开评论并聚焦输入，沿用已有语音输入法输入结论。
+- **讨论与记录连起来**：保留 Fn 语音输入，识别完成后自动把文字接入评论；菜单键独立控制评论的展开与收起。
 
 ## 三步开始
 
-1. 在 [Releases](https://github.com/YinsenWANG/bitable-control-assistant/releases/latest) 下载 `bitable-control-assistant-1.4.2-chrome.zip` 并解压。Chrome 打开 `chrome://extensions`，开启开发者模式，加载含 `manifest.json` 的文件夹。
+1. 从 [Chrome 商店](https://chromewebstore.google.com/detail/cajpidagedciogaoeadahcaomockfkah)安装；商店新版本需要审核后才会分发。也可在 [Releases](https://github.com/YinsenWANG/bitable-control-assistant/releases/latest) 下载 `bitable-control-assistant-1.5.0-chrome.zip` 并解压，在 Chrome 的 `chrome://extensions` 开启开发者模式，加载含 `manifest.json` 的文件夹。
 2. 在扩展设置页查看组合键，将遥控器映射为相同组合。Home 与电源由 **Chrome 扩展快捷键**管理，其余动作在扩展里录入；每项都可复制键值。
 3. 打开任意有权限的飞书多维表格并刷新，按 TV（默认 **Control + Shift + 9**）进入会议。
 
@@ -33,19 +33,23 @@ Mac 想完全隐藏地址栏与标签页：在 Chrome「显示」菜单取消「
 | ↑ / ↓ | 上一条 / 下一条记录 | 上一字段 / 下一字段；长文本先滚动 |
 | ← / → | 上一视图 / 下一视图 | 上一条 / 下一条记录 |
 | OK | 展开详情 | 操作当前字段；超链接在新标签页打开 |
-| 菜单 | 打开当前记录的评论 | 展开并聚焦评论，再按收起 |
-| 返回 | 已在列表时不删除单元格 | 空框双击退出输入 → 单按收起评论 → 单按关闭详情 |
+| 菜单 | 打开当前记录的评论，不进入输入 | 展开 / 收起评论；展开后按 OK 进入输入 |
+| 返回 | 已在列表时不删除单元格 | 非输入时逐层收起评论、关闭详情；输入时只删除 |
 | TV | 进入或退出全屏会议 | 同左 |
 | Home | 从其他标签页回到正在开会的表格 | 同左 |
 | 电源 | 刷新当前标签页，跨网站生效 | 同左 |
 | 音量 ± | 连续调整缩放 | 同左 |
-| 语音 | 沿用已有语音输入法 | 在评论输入框中输入文字 |
+| 语音 | 沿用已有语音输入法 | 开启语音接入后，识别结束自动展开评论并写入草稿 |
 
-**输入文字时**，方向键交给输入框与输入法；返回键删除光标左侧的字符，删空后需在 **0.5 秒内独立按两次**才退出输入，之后单按逐层返回。删掉最后一个字和长按连发不计入双击。评论框中 OK 发送评论。收起评论会保留草稿；带草稿切换记录、视图或关闭详情时会提示先处理。
+**输入文字时**，方向键交给输入框与输入法；返回键只删除光标左侧的字符，空框、双击或长按都不会退出输入。需要退出时，用菜单键收起评论，或使用「退出输入 / 逐层返回（备用）」（默认 Esc）。只有非输入状态下，返回键才逐层返回。评论框中 OK 发送评论；确认发送成功后，评论默认在 1 秒后收起。可在设置中关闭自动收起，或将等待时间调整为 0–60 秒；期间开始新的输入则保留打开。收起评论会保留草稿；带草稿切换记录、视图或关闭详情时会提示先处理。
 
-![详情字段与评论操作示意](store/detail.png)
+会议中打开记录详情时，如果飞书默认展开了已有评论，扩展会将其收起，并覆盖首次加载和后续重绘。主动打开评论、正在评论输入或已有草稿时保留你的操作。需要评论时按菜单键，或使用已开启的语音接入。
 
-*布局示意，数据为虚构。只有“超链接”类型字段中的链接单独落焦，普通文本中的网址不会增加停靠点。扩展不提供语音识别，需要使用系统或第三方输入法。*
+TV 再按一次会退出当前 Chrome 窗口的全屏并恢复本页布局；其他仍在会议模式的表格标签页不会阻止这次主动退出。
+
+![详情字段与评论操作示意](store/detail.jpg)
+
+*布局示意，数据为虚构。只有“超链接”类型字段中的链接单独落焦，普通文本中的网址不会增加停靠点。扩展不提供语音识别，需要使用系统或第三方输入法。使用「无线麦 + 微信输入法」时，可保留原来的 Fn 设置，在扩展中开启「麦克风 · 语音接入评论」。浏览详情时只按住麦克风说话，输入法结束这段识别后自动展开评论并接入文字，无需先按菜单或 OK。扩展无法感知 Fn 按下的瞬间。其他支持组合键映射的设备仍可绑定「展开评论并聚焦」（默认 Control + Shift + C）。*
 
 ## 按你的习惯配置
 
@@ -58,8 +62,11 @@ Mac 想完全隐藏地址栏与标签页：在 Chrome「显示」菜单取消「
 | 电源：刷新当前标签页 | Control + Shift + 8 | 当前 Chrome 标签页，不依赖会议开启 |
 | Home：回到会议表格 | Control + Shift + 0 | Chrome 中的其他标签页 |
 | TV：进入 / 退出会议 | Control + Shift + 9 | 飞书多维表格内容区 |
-| 菜单：展开 / 收起评论 | Page Down | 飞书多维表格内容区 |
+| 菜单：展开 / 收起评论，不进入输入 | Page Down | 飞书多维表格内容区 |
+| 语音准备：展开评论并聚焦 | Control + Shift + C | 飞书多维表格内容区；不启动听写 |
 | 放大 / 缩小 | Control + Shift + = / − | 飞书多维表格内容区，会议模式开启时 |
+
+麦克风语音接入默认关闭，需在扩展设置页开启。它准备一个输入位置来接收已有输入法输出；浏览详情时直接打字也会进入评论，编辑字段时先按 OK。只在会议模式的记录详情中接收，暂停或进入其他字段编辑后不接管输入。识别中的修正保留到结束后再写入，已有评论草稿按原样追加；写入失败时保留原文供复制或重试。
 
 升级后 Chrome 可能保留已有配置或因冲突留空，请以设置页显示为准。**Mac 的 Control（⌃）与 Command（⌘）不同。** Home 和电源的 Chrome 配置不包含在扩展配置导入导出中。
 
@@ -69,7 +76,7 @@ Mac 想完全隐藏地址栏与标签页：在 Chrome「显示」菜单取消「
 
 <details><summary>查看自定义按键界面</summary>
 
-![自定义组合键、原生开关与复制](store/keys.png)
+![自定义组合键、原生开关与复制](store/keys.jpg)
 
 </details>
 
@@ -83,7 +90,7 @@ Mac 想完全隐藏地址栏与标签页：在 Chrome「显示」菜单取消「
 
 ## 版本、反馈与开发
 
-当前版本 **v1.4.2**：修复会议刷新、浏览器返回后的恢复；完整还原原侧栏状态，并补强页面消息校验和本地存储容错。[发布检查报告](docs/AUDIT-v1.4.2.md)。[发布记录](https://github.com/YinsenWANG/bitable-control-assistant/releases/tag/v1.4.2) · [完整更新记录](CHANGELOG.md) · [报告问题](https://github.com/YinsenWANG/bitable-control-assistant/issues)
+当前开发版 **v1.5.0**：增加保留 Fn 的语音文字接入，识别完成后自动进入评论；菜单只展开或收起；输入框内返回键始终只删除，空框也不会退出。[验证记录](docs/TESTING.md)。[发布版本](https://github.com/YinsenWANG/bitable-control-assistant/releases) · [完整更新记录](CHANGELOG.md) · [报告问题](https://github.com/YinsenWANG/bitable-control-assistant/issues)
 
 反馈时请提供版本、操作系统、实际组合键、列表或详情状态及复现步骤；公开反馈中请勿粘贴内部表格链接、私人记录或凭据。
 
@@ -96,6 +103,6 @@ npm run check
 npm run package
 ```
 
-源码的 `extension/` 可直接加载；`dist/` 生成可上传商店的 ZIP。89 项自动检查和真实使用者验收范围见[验证记录](docs/TESTING.md)。发布插图源文件位于 `demo/`，不打入运行包。
+源码的 `extension/` 可直接加载；`dist/` 生成可上传商店的 ZIP。146 项自动检查和实际验证范围见[验证记录](docs/TESTING.md)。发布插图源文件位于 `demo/`，不打入运行包。
 
 MIT 开源。此项目独立开发，与飞书及其运营方没有隶属关系。

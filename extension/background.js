@@ -7,7 +7,7 @@ chrome.storage.onChanged.addListener((changes,area)=>{
 });
 
 // Serial session changes prevent two meeting tabs from overwriting each other.
-// Session storage survives worker restarts and clears when Chrome closes.
+// Session storage survives worker restarts, but extension reloads also clear it.
 let sessionWork=Promise.resolve();
 function withSession(fn){const next=sessionWork.then(fn);sessionWork=next.catch(()=>{});return next;}
 async function readSessions(){return (await chrome.storage.session.get('meetingWindows')).meetingWindows||{};}
@@ -30,8 +30,25 @@ async function releaseTab(tabId){
   }
   await chrome.storage.session.set({meetingWindows:sessions});
 }
-async function presentation(sender,enabled){
-  if(!enabled){await releaseTab(sender.tab.id);return {ok:true,fullscreen:false};}
+async function exitWindowFullscreen(windowId){
+  const current=await chrome.windows.get(windowId);
+  if(current.state!=='fullscreen')return;
+  const session=(await readSessions())[windowId];
+  await chrome.windows.update(windowId,{state:session?.previousState==='maximized'?'maximized':'normal'});
+  // macOS may finish the window animation after the API call resolves.
+  for(let attempt=0;attempt<20;attempt++){
+    if((await chrome.windows.get(windowId)).state!=='fullscreen')return;
+    await new Promise(resolve=>setTimeout(resolve,100));
+  }
+  throw new Error('Chrome 尚未退出全屏，请再按 TV 重试。');
+}
+async function presentation(sender,enabled,explicitExit=false){
+  if(!enabled){
+    // A deliberate TV press exits this window even when another tab has an
+    // active meeting, or a reload erased who originally entered fullscreen.
+    if(explicitExit)await exitWindowFullscreen(sender.tab.windowId);
+    await releaseTab(sender.tab.id);return {ok:true,fullscreen:false};
+  }
   const tabId=sender.tab.id,windowId=sender.tab.windowId;
   const current=await chrome.windows.get(windowId),sessions=await readSessions();
   const session=sessions[windowId]||{
@@ -73,7 +90,11 @@ chrome.runtime.onMessage.addListener((message,sender,respond)=>{
     if(message?.type==='open-settings'){await chrome.runtime.openOptionsPage();return {ok:true};}
     if(message?.type==='open-keyboard-settings'){await chrome.tabs.create({url:'chrome://extensions/shortcuts'});return {ok:true};}
     if(message?.type==='return-to-meeting')return withSession(returnToMeeting);
-    if(message?.type==='presentation'&&message.enabled===false&&sender.tab?.id)return withSession(()=>presentation(sender,false));
+    if(message?.type==='presentation'&&message.enabled===false&&sender.tab?.id){
+      if(message.exitFullscreen!==undefined&&typeof message.exitFullscreen!=='boolean')throw new Error('无效的全屏退出状态');
+      if(message.exitFullscreen&&(!M.target(sender.url||sender.tab.url)||!Number.isInteger(sender.tab.windowId)))throw new Error('请在飞书多维表格中退出全屏会议。');
+      return withSession(()=>presentation(sender,false,message.exitFullscreen===true));
+    }
     if(!sender.tab?.id||!M.target(sender.url||sender.tab.url))throw new Error('请在飞书多维表格中操作。');
     const tabId=sender.tab.id;
     if(message?.type==='reload-page'){await chrome.tabs.reload(tabId);return {ok:true};}

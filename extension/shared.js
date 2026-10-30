@@ -6,14 +6,14 @@
     ['navigateLeft','左：上一视图 / 上一条记录','方向左','ArrowLeft',false],
     ['navigateRight','右：下一视图 / 下一条记录','方向右','ArrowRight',false],
     ['confirm','确定 / 操作字段 / 发送评论','中间确定','Enter',false],
-    ['deleteBackward','删除左侧文字 / 双击退出空输入框','返回','Backspace',true],
+    ['deleteBackward','输入时删除 / 浏览时逐层返回','返回','Backspace',true],
     ['toggle','进入 / 退出全屏会议模式','TV','Control+Shift+Digit9',false],
     ['reloadPage','刷新页面（备用）','可选','Meta+KeyR',false],
-    ['toggleComments','展开并聚焦 / 收起评论','菜单','PageDown',false],
+    ['toggleComments','展开 / 收起评论（不进入输入）','菜单','PageDown',false],
     ['toggleSidebar','展开 / 折叠侧边栏','可选独立动作','',false],
     ['zoomIn','放大','音量＋','Control+Shift+Equal',true],
     ['zoomOut','缩小','音量－','Control+Shift+Minus',true],
-    ['back','逐层返回（备用）','可选独立动作','Escape',false],
+    ['back','退出输入 / 逐层返回（备用）','可选独立动作','Escape',false],
     ['scrollDown','向下翻页','可选独立动作','',true],
     ['scrollUp','向上翻页','可选独立动作','PageUp',true],
     ['openDetail','展开记录详情','可选独立动作','Meta+KeyE',false],
@@ -38,7 +38,7 @@
   const bindingFor=(id,c)=>c.nativeBindings?.[id]?nativeBinding(id):c.bindings[id];
   ACTIONS.find(a=>a.id==='openDetail').binding=nativeBinding('openDetail');
   ACTIONS.find(a=>a.id==='reloadPage').binding=nativeBinding('reloadPage');
-  const DEFAULTS={schemaVersion:6,nativeBindings:{zoomIn:false,zoomOut:false,openDetail:false,toggleSidebar:false,reloadPage:true},autoEnable:false,showHud:true,hideHeader:true,zoomStep:10,bindings:Object.fromEntries(ACTIONS.map(a=>[a.id,a.binding]))};
+  const DEFAULTS={schemaVersion:7,voiceRelay:false,autoCloseComments:true,commentCloseDelay:1,nativeBindings:{zoomIn:false,zoomOut:false,openDetail:false,toggleSidebar:false,reloadPage:true},autoEnable:false,showHud:true,hideHeader:true,zoomStep:10,bindings:Object.fromEntries(ACTIONS.map(a=>[a.id,a.binding]))};
   const MODIFIERS=['Control','Alt','Shift','Meta'];
   function chord(e) {
     if (!e.code || /^(Control|Alt|Shift|Meta)(Left|Right)$/.test(e.code)) return '';
@@ -81,7 +81,7 @@
   function config(input={}) {
     if(!input||typeof input!=='object'||Array.isArray(input))throw new Error('配置格式无效。');
     const incoming={...(input.bindings||{})};
-    if(![3,4,5,6].includes(input.schemaVersion)&&input.bindings){
+    if(![3,4,5,6,7].includes(input.schemaVersion)&&input.bindings){
       for(const [old,id] of Object.entries({previousRecord:'navigateUp',nextRecord:'navigateDown',previousView:'navigateLeft',nextView:'navigateRight'})){
         if(Object.hasOwn(incoming,old)){if(!Object.hasOwn(incoming,id))incoming[id]=incoming[old];delete incoming[old];}
       }
@@ -91,7 +91,7 @@
       if(!Object.hasOwn(incoming,'openComments')&&Object.values(incoming).includes(DEFAULTS.bindings.openComments))incoming.openComments='';
     }
     const nativeBindings=Object.fromEntries(Object.keys(NATIVE).map(id=>[id,input.nativeBindings?.[id]??DEFAULTS.nativeBindings[id]]).map(([id,value])=>[id,value===true]));
-    if(![4,5,6].includes(input.schemaVersion)&&input.bindings){
+    if(![4,5,6,7].includes(input.schemaVersion)&&input.bindings){
       if(!Object.hasOwn(incoming,'toggleComments')){
         incoming.toggleComments=nativeBindings.toggleSidebar?nativeBinding('toggleSidebar'):(incoming.toggleSidebar??DEFAULTS.bindings.toggleComments);
         incoming.toggleSidebar='';nativeBindings.toggleSidebar=false;
@@ -103,6 +103,8 @@
     for(const id of ['zoomIn','zoomOut'])if(!Object.hasOwn(input.nativeBindings||{},id)&&Object.entries(incoming).some(([other,key])=>other!==id&&key===nativeBinding(id)))nativeBindings[id]=false;
     const c={...DEFAULTS,...input,bindings:{...DEFAULTS.bindings,...incoming},nativeBindings};
     if(!Number.isFinite(c.zoomStep)||c.zoomStep<5||c.zoomStep>25)throw new Error('缩放步长需要在 5–25 之间。');
+    if(typeof c.autoCloseComments!=='boolean')throw new Error('评论自动收起开关的值无效。');
+    if(!Number.isFinite(c.commentCloseDelay)||c.commentCloseDelay<0||c.commentCloseDelay>60)throw new Error('评论收起时间需要在 0–60 秒之间。');
     const used=new Map();
     for(const a of ACTIONS){
       if(!validateBinding(c.bindings[a.id]))throw new Error(a.label+' 的快捷键格式无效。');
@@ -110,23 +112,25 @@
       if(v&&used.has(v))throw new Error(a.label+' 与「'+used.get(v).label+'」使用了相同快捷键。');
       if(v)used.set(v,a);
     }
-    return {schemaVersion:6,autoEnable:!!c.autoEnable,showHud:!!c.showHud,hideHeader:!!c.hideHeader,zoomStep:c.zoomStep,nativeBindings:c.nativeBindings,bindings:Object.fromEntries(ACTIONS.map(a=>[a.id,c.bindings[a.id]]))};
+    return {schemaVersion:7,voiceRelay:!!c.voiceRelay,autoCloseComments:c.autoCloseComments,commentCloseDelay:c.commentCloseDelay,autoEnable:!!c.autoEnable,showHud:!!c.showHud,hideHeader:!!c.hideHeader,zoomStep:c.zoomStep,nativeBindings:c.nativeBindings,bindings:Object.fromEntries(ACTIONS.map(a=>[a.id,c.bindings[a.id]]))};
   }
   function actionFor(value,c){return ACTIONS.find(a=>bindingFor(a.id,c)&&bindingFor(a.id,c)===value);}
   const DIRECTIONS={navigateUp:'up',navigateDown:'down',navigateLeft:'left',navigateRight:'right'};
   const isZoom=id=>['zoomIn','zoomOut','resetZoom'].includes(id);
-  function inputPolicy(action,chord,context,{native=false,popup=false,emptyInput=false,repeat=false}={}){
+  function inputPolicy(action,chord,context,{native=false,popup=false,repeat=false}={}){
     if(isZoom(action.id))return native?'native':'run';
     if(action.id==='reloadPage')return native?'native':'run';
     const editing=['comment','other','grid-edit'].includes(context);
     // Holding delete may erase text, but must never cascade through return levels.
-    if(action.id==='deleteBackward'&&repeat&&(!editing||emptyInput))return 'block';
+    if(action.id==='deleteBackward'){
+      if(editing)return chord==='Backspace'?'pass':'run';
+      if(repeat)return 'block';
+    }
     if(editing&&/^((Control|Alt|Shift|Meta)\+)*Arrow(Up|Down|Left|Right)$/.test(chord))return 'pass';
     if(editing&&DIRECTIONS[action.id])return 'caret';
-    if(editing&&action.id==='deleteBackward'&&chord==='Backspace'&&!emptyInput)return 'pass';
     if(editing&&!['toggle','zoomIn','zoomOut','resetZoom','deleteBackward','back','toggleComments','closeComments','openComments','confirm','sendComment'].includes(action.id))return 'pass';
     if(editing&&context!=='comment'&&['confirm','sendComment'].includes(action.id))return 'pass';
-    if(popup&&editing&&!['back','toggle','toggleComments'].includes(action.id)&&!(action.id==='deleteBackward'&&emptyInput))return 'pass';
+    if(popup&&editing&&!['back','toggle','toggleComments','openComments','closeComments'].includes(action.id))return 'pass';
     if(native)return editing?'pass':'native';
     return 'run';
   }

@@ -35,6 +35,28 @@ test('zoom key presses have no debounce and repeat can accumulate',()=>{
   assert.equal(M.keyDelay(M.ACTIONS.find(a=>a.id==='deleteBackward'),'comment'),0);
 });
 test('zoom settings and complete action maps survive a config round trip',()=>{const c=M.config({zoomStep:15,showHud:false,bindings:{nextRecord:'Alt+KeyN',previousRecord:'Alt+KeyP'}});assert.deepEqual(M.config(JSON.parse(JSON.stringify(c))),c);assert.throws(()=>M.config({zoomStep:99}));});
+test('auto-close preferences default to one second and preserve legacy shortcuts and exported values',()=>{
+  const legacy=M.config({schemaVersion:6,voiceRelay:true,bindings:{toggleComments:'Meta+Backslash'}});
+  assert.equal(legacy.autoCloseComments,true);assert.equal(legacy.commentCloseDelay,1);assert.equal(legacy.bindings.toggleComments,'Meta+Backslash');
+  const custom=M.config({...legacy,autoCloseComments:false,commentCloseDelay:2.5});assert.deepEqual(M.config(JSON.parse(JSON.stringify(custom))),custom);
+  for(const value of [-1,61,NaN,Infinity,'2',null])assert.throws(()=>M.config({commentCloseDelay:value}));
+  for(const value of ['false',1,null])assert.throws(()=>M.config({autoCloseComments:value}));
+  assert.equal(M.config({commentCloseDelay:0}).commentCloseDelay,0);assert.equal(M.config({commentCloseDelay:60}).commentCloseDelay,60);
+});
+test('auto-close settings can be edited, disabled, saved and re-enabled without losing the delay',async()=>{
+  const d=dom(script('options.html')),w=d.window;let saved;
+  w.chrome={commands:{getAll:async()=>[]},runtime:{sendMessage:async()=>({ok:true})},storage:{local:{get:async()=>({}),set:async value=>{saved=value.config;}}}};
+  w.eval(script('options.js'));await new Promise(resolve=>setImmediate(resolve));
+  const checkbox=w.document.getElementById('autoCloseComments'),delay=w.document.getElementById('commentCloseDelay');
+  assert.equal(checkbox.checked,true);assert.equal(delay.value,'1');assert.equal(delay.disabled,false);
+  delay.value='2.5';checkbox.checked=false;checkbox.dispatchEvent(new w.Event('input',{bubbles:true}));assert.equal(delay.disabled,true);
+  w.document.querySelector('.clear-btn').click();await w.document.getElementById('save').onclick();assert.equal(saved.autoCloseComments,false);assert.equal(saved.commentCloseDelay,2.5);
+  checkbox.checked=true;checkbox.dispatchEvent(new w.Event('input',{bubbles:true}));assert.equal(delay.disabled,false);assert.equal(delay.value,'2.5');
+  delay.value='';await w.document.getElementById('save').onclick();assert.match(w.document.getElementById('feedback').textContent,/时间|秒/);assert.equal(saved.autoCloseComments,false);
+  checkbox.checked=false;checkbox.dispatchEvent(new w.Event('input',{bubbles:true}));assert.equal(delay.value,'2.5');await w.document.getElementById('save').onclick();assert.equal(saved.commentCloseDelay,2.5);
+  checkbox.checked=true;checkbox.dispatchEvent(new w.Event('input',{bubbles:true}));
+  delay.value='1.5';await w.document.getElementById('save').onclick();assert.equal(saved.autoCloseComments,true);assert.equal(saved.commentCloseDelay,1.5);d.window.close();
+});
 test('changing bindings does not erase unsaved general settings',async()=>{
   const d=dom(script('options.html')),w=d.window;let saved;
   w.chrome={storage:{local:{get:async()=>({}),set:async value=>{saved=value.config;}}}};
@@ -71,7 +93,7 @@ test('renamed extension imports an old-name configuration without losing custom 
   const old={format:'feishu-meeting-remote',version:5,config:{schemaVersion:5,zoomStep:15,bindings:{toggleComments:'Meta+Backslash',zoomIn:'Alt+KeyZ'}}};
   const input=w.document.getElementById('importFile');Object.defineProperty(input,'files',{value:[{size:1000,text:async()=>JSON.stringify(old)}]});
   await input.onchange();await w.document.getElementById('save').onclick();
-  assert.equal(saved.bindings.toggleComments,'Meta+Backslash');assert.equal(saved.bindings.zoomIn,'Alt+KeyZ');assert.equal(saved.zoomStep,15);assert.equal(saved.nativeBindings.zoomIn,false);assert.equal(saved.schemaVersion,6);d.window.close();
+  assert.equal(saved.bindings.toggleComments,'Meta+Backslash');assert.equal(saved.bindings.zoomIn,'Alt+KeyZ');assert.equal(saved.zoomStep,15);assert.equal(saved.nativeBindings.zoomIn,false);assert.equal(saved.schemaVersion,7);d.window.close();
 });
 function canvasDom(){const d=dom('<canvas role="faster" width="2080" height="1014"></canvas>'),w=d.window;
   function Ctx(canvas){this.canvas=canvas;this.font='14px sans-serif';this.textAlign='left';this.textBaseline='alphabetic';this.globalAlpha=1;this.fillStyle='#fff';this.scale=2;}
@@ -105,10 +127,17 @@ test('session preference updates survive a website storage write failure',()=>{
 });
 function commentDom(text='待发送的语音文字'){const d=dom(`<div id="BASE_CARD_MODAL_CONTENT_FOCUS_ID" tabindex="0"><button class="bitable-discussion-add-button">评论</button><button class="bitable-card-modal-header-v2-btn-next"></button><button class="bitable-card-modal-header-v2-btn-close"></button><div class="record-discussion-container-horizontal"><div class="record-discussion-container"><div data-placeholder="添加新的评论..." contenteditable="true">${text}</div><div class="bitable-discussion__reply__send-btn-wrap_new_ui"></div></div></div></div>`);d.window.eval(script('adapter.js'));d.window.eval(script('field-navigation.js'));return {d,adapter:new d.window.MeetingRemote.FeishuAdapter(()=>{}),editor:d.window.document.querySelector('[contenteditable]')};}
 test('collapsing a draft retains the exact editor node and restores it',async()=>{const {d,adapter:a,editor}=commentDom();await a.closeComments();assert.equal(a.commentsOpen(),false);assert.equal(a.hasDraft(),true);assert.equal(a.editor(),editor);await a.openComments();assert.equal(a.commentsOpen(),true);assert.equal(a.editor(),editor);assert.equal(editor.textContent,'待发送的语音文字');d.window.close();});
-test('menu toggles comments from an active editor and restores the draft with focus',async()=>{
+test('menu restores a draft in browse mode and OK starts input without sending',async()=>{
   const {d,adapter:a,editor}=commentDom('未发送的草稿');editor.focus();await a.toggleComments();
   assert.equal(a.commentsOpen(),false);assert.equal(editor.textContent,'未发送的草稿');
-  await a.toggleComments();assert.equal(a.commentsOpen(),true);assert.equal(d.window.document.activeElement,editor);assert.equal(editor.textContent,'未发送的草稿');d.window.close();
+  await a.toggleComments();assert.equal(a.commentsOpen(),true);assert.notEqual(d.window.document.activeElement,editor);assert.equal(a.state(),'评论浏览');assert.equal(editor.textContent,'未发送的草稿');
+  await a.confirm();assert.equal(d.window.document.activeElement,editor);assert.equal(a.state(),'评论输入');assert.equal(editor.textContent,'未发送的草稿');d.window.close();
+});
+test('opening comments for dictation preserves an existing caret and otherwise places it at the end',async()=>{
+  const {d,adapter:a,editor}=commentDom('已有的文字'),selection=d.window.getSelection();
+  a.card().focus();selection.removeAllRanges();await a.openComments();assert.equal(selection.anchorNode,editor);assert.equal(selection.anchorOffset,editor.childNodes.length);
+  const range=d.window.document.createRange();range.setStart(editor.firstChild,2);range.collapse(true);selection.removeAllRanges();selection.addRange(range);
+  await a.openComments();assert.equal(selection.anchorNode,editor.firstChild);assert.equal(selection.anchorOffset,2);assert.equal(editor.textContent,'已有的文字');d.window.close();
 });
 test('a hidden draft blocks switching record, switching view and closing detail',async()=>{const {d,adapter:a}=commentDom();await a.closeComments();await assert.rejects(()=>a.moveRecord(1),/未发送/);await assert.rejects(()=>a.switchView(1),/未发送/);await assert.rejects(()=>a.closeDetail(),/未发送/);d.window.close();});
 test('comment send rejects disabled controls and ignores a concurrent duplicate',async()=>{const {d,adapter:a,editor}=commentDom();const button=d.window.document.querySelector('.bitable-discussion__reply__send-btn-wrap_new_ui');button.classList.add('disabled');await assert.rejects(()=>a.send(),/不能发送/);button.classList.remove('disabled');let clicks=0;button.addEventListener('click',()=>{clicks++;setTimeout(()=>{editor.textContent='';},60);});await Promise.all([a.send(),a.send()]);assert.equal(clicks,1);assert.equal(a.hasDraft(),false);d.window.close();});
@@ -190,7 +219,7 @@ test('content script forwards every zoom press even while record navigation is b
   const d=dom(),w=d.window;let listener,finishNavigation,zoomMessages=0;
   w.MeetingRemote.FeishuAdapter=class {
     isBasePage(){return true;}card(){return null;}state(){return '记录列表';}viewName(){return '表格';}hasDraft(){return false;}
-    cancelEmptyReturn(){}async ensureSelection(){}restoreHidden(){}moveRecord(){return new Promise(resolve=>{finishNavigation=resolve;});}
+    async ensureSelection(){}restoreHidden(){}moveRecord(){return new Promise(resolve=>{finishNavigation=resolve;});}
   };
   w.chrome={
     storage:{local:{get:async()=>({config:M.config()})},onChanged:{addListener(){}}},
@@ -199,7 +228,7 @@ test('content script forwards every zoom press even while record navigation is b
       return {ok:true,zoom:1};
     }}
   };
-  w.eval(script('content.js'));await new Promise(resolve=>setImmediate(resolve));
+  w.eval(script('dictation-relay.js'));w.eval(script('content.js'));await new Promise(resolve=>setImmediate(resolve));
   const run=action=>new Promise(resolve=>listener({type:'meeting-action',action},{},resolve));
   assert.equal((await run('toggle')).ok,true);
   const navigation=run('nextRecord');

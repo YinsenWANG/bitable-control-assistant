@@ -84,9 +84,10 @@ test('every shortcut can be copied and native toggle preserves unsaved settings'
   w.eval(read('shared.js'));w.eval(read('options.js'));await new Promise(r=>setImmediate(r));
   assert.equal(w.document.querySelectorAll('#bindings .copy-btn').length,M.ACTIONS.length);
   w.document.querySelector('[data-action="toggleComments"] .copy-btn').click();await new Promise(r=>setImmediate(r));assert.equal(copied,'PageDown');
+  w.document.getElementById('voiceRelay').checked=true;
   w.document.getElementById('zoomStep').value='15';w.document.querySelector('[data-action="toggleSidebar"] input').click();
   w.document.querySelector('[data-action="toggleSidebar"] .copy-btn').click();await new Promise(r=>setImmediate(r));assert.equal(copied,w.MeetingRemote.nativeBinding('toggleSidebar'));
-  await w.document.getElementById('save').onclick();assert.equal(saved.zoomStep,15);assert.equal(saved.nativeBindings.toggleSidebar,true);
+  await w.document.getElementById('save').onclick();assert.equal(saved.zoomStep,15);assert.equal(saved.nativeBindings.toggleSidebar,true);assert.equal(saved.voiceRelay,true);
   w.document.getElementById('copyMeetingShortcut').click();await new Promise(r=>setImmediate(r));assert.equal(copied,'Ctrl+Shift+8');d.window.close();
 });
 test('leaving input does not bubble Escape and accidentally close the native record dialog',async()=>{
@@ -137,7 +138,7 @@ test('prose with many embedded links is one field stop; only typed URL fields cr
 });
 test('schema 4 settings retain custom keys and add native page reload without conflicts',()=>{
   const c=M.config({schemaVersion:4,bindings:{toggleComments:'Alt+KeyM',zoomIn:'Alt+KeyZ'}});
-  assert.equal(c.schemaVersion,6);assert.equal(c.hideHeader,true);assert.equal(c.bindings.toggleComments,'Alt+KeyM');assert.equal(c.bindings.zoomIn,'Alt+KeyZ');
+  assert.equal(c.schemaVersion,7);assert.equal(c.hideHeader,true);assert.equal(c.bindings.toggleComments,'Alt+KeyM');assert.equal(c.bindings.zoomIn,'Alt+KeyZ');
   assert.equal(M.bindingFor('reloadPage',c),M.nativeBinding('reloadPage'));assert.equal(c.nativeBindings.reloadPage,true);assert.deepEqual(M.config(c),c);
   const conflict=M.config({schemaVersion:4,bindings:{toggleComments:M.nativeBinding('reloadPage')}});
   assert.equal(conflict.bindings.reloadPage,'');assert.equal(conflict.nativeBindings.reloadPage,false);
@@ -151,20 +152,21 @@ test('OK skips controls clipped by a collapsed ancestor and focuses the visible 
   const {d,w,a}=fixture();clippedOptions(w);a.moveField(1);await a.confirm();
   assert.equal(w.document.activeElement.getAttribute('contenteditable'),'true');d.window.close();
 });
-test('empty input returns once per press, while holding deletion cannot exit multiple layers',()=>{
+test('native deletion always belongs to the editor while held deletion cannot navigate in browse mode',()=>{
   for(const context of ['comment','other','grid-edit']){
-    assert.equal(M.inputPolicy(action('deleteBackward'),'Backspace',context,{emptyInput:false,repeat:true}),'pass');
-    assert.equal(M.inputPolicy(action('deleteBackward'),'Backspace',context,{emptyInput:true}),'run');
-    assert.equal(M.inputPolicy(action('deleteBackward'),'Backspace',context,{emptyInput:true,repeat:true}),'block');
+    assert.equal(M.inputPolicy(action('deleteBackward'),'Backspace',context,{repeat:true}),'pass');
+    assert.equal(M.inputPolicy(action('deleteBackward'),'Backspace',context),'pass');
+    assert.equal(M.inputPolicy(action('deleteBackward'),'Backspace',context,{popup:true,repeat:true}),'pass');
+    assert.equal(M.inputPolicy(action('deleteBackward'),'Alt+KeyB',context,{popup:true,repeat:true}),'run');
     assert.equal(M.inputPolicy(action('toggleComments'),'PageDown',context,{popup:true}),'run');
   }
   assert.equal(M.inputPolicy(action('deleteBackward'),'Backspace','none',{repeat:true}),'block');
 });
-test('empty native editors need a double press without deleting, and spaces or attachments remain input',async()=>{
+test('custom deletion leaves empty editors focused, and spaces or attachments remain input',async()=>{
   const {d,w,a}=fixture(),editor=w.document.querySelector('[contenteditable]');
   editor.textContent='\u200b';editor.focus();let deletes=0;w.document.execCommand=()=>{deletes++;};
   assert.equal(a.inputIsEmpty(),true);await a.deleteBackward();assert.equal(deletes,0);assert.equal(w.document.activeElement,editor);await a.deleteBackward();
-  assert.equal(w.document.activeElement,a.currentFieldStop().field);assert.ok(a.card());
+  assert.equal(w.document.activeElement,editor);assert.ok(a.card());
   editor.textContent=' ';editor.focus();assert.equal(a.inputIsEmpty(),false);await a.deleteBackward();assert.equal(deletes,1);
   editor.innerHTML='<img alt="attachment">';assert.equal(a.inputIsEmpty(),false);
   const input=w.document.createElement('textarea');w.document.body.append(input);input.focus();assert.equal(a.inputIsEmpty(),true);
@@ -172,7 +174,7 @@ test('empty native editors need a double press without deleting, and spaces or a
 });
 test('schema 3 menu key migrates to comments and Home is removed from page-local shortcuts',()=>{
   const c=M.config({schemaVersion:3,bindings:{toggleSidebar:'Alt+KeyM',home:'Control+Shift+Digit0',zoomIn:'Alt+KeyZ'}});
-  assert.equal(c.schemaVersion,6);assert.equal(c.bindings.toggleComments,'Alt+KeyM');assert.equal(c.bindings.toggleSidebar,'');assert.equal(c.bindings.home,undefined);assert.equal(c.bindings.zoomIn,'Alt+KeyZ');
+  assert.equal(c.schemaVersion,7);assert.equal(c.bindings.toggleComments,'Alt+KeyM');assert.equal(c.bindings.toggleSidebar,'');assert.equal(c.bindings.home,undefined);assert.equal(c.bindings.zoomIn,'Alt+KeyZ');
   assert.deepEqual(M.config(c),c);
   const native=M.config({schemaVersion:3,bindings:{toggleSidebar:'Alt+KeyS'},nativeBindings:{toggleSidebar:true}});
   assert.equal(native.bindings.toggleComments,M.nativeBinding('toggleSidebar'));assert.equal(native.nativeBindings.toggleSidebar,false);

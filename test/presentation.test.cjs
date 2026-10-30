@@ -13,13 +13,13 @@ async function fixture(config={nativeBindings:{zoomIn:false,zoomOut:false}},bloc
   w.eval(read('shared.js'));
   w.MeetingRemote.FeishuAdapter=class {
     isBasePage(){return state.base;}card(){return null;}state(){return '记录列表';}viewName(){return '示例视图';}hasDraft(){return state.draft;}
-    cancelEmptyReturn(){}guardDraft(){if(state.draft)throw new Error('请先处理评论草稿');}async ensureSelection(){}restoreHidden(){}clearFieldFocus(){}
+    guardDraft(){if(state.draft)throw new Error('请先处理评论草稿');}async ensureSelection(){}restoreHidden(){}clearFieldFocus(){}cancelCommentAutoClose(){}
     async collapseSidebarForMeeting(){state.sidebarAttempts=(state.sidebarAttempts||0)+1;if(state.sidebarReady!==false)this.meetingSidebar={expanded:true};}
     async restoreMeetingSidebar(){this.meetingSidebar=null;}
     inputContext(){throw new Error('Volume keys must not inspect editor layout');}editorPopupOpen(){throw new Error('Volume keys must not inspect popup layout');}
   };
-  w.chrome={storage:{local:{get:async()=>({config:w.MeetingRemote.config(config)})},onChanged:{addListener(){}}},runtime:{getManifest:()=>({version:'1.2.0'}),onMessage:{addListener(fn){listener=fn;}},sendMessage:async msg=>{messages.push(msg);if(msg.type==='zoom'&&state.zoomReply)return state.zoomReply;return {ok:true,zoom:1.5};}}};
-  w.eval(read('content.js'));await settle();
+  w.chrome={storage:{local:{get:async()=>({config:w.MeetingRemote.config(config)})},onChanged:{addListener(){}}},runtime:{getManifest:()=>({version:'1.5.0'}),onMessage:{addListener(fn){listener=fn;}},sendMessage:async msg=>{messages.push(msg);if(msg.type==='zoom'&&state.zoomReply)return state.zoomReply;if(msg.type==='presentation'&&state.presentationReply)return state.presentationReply;return {ok:true,zoom:1.5};}}};
+  w.eval(read('dictation-relay.js'));w.eval(read('content.js'));await settle();
   const message=msg=>new Promise(resolve=>listener(msg,{},resolve));
   const run=action=>message({type:'meeting-action',action});
   function volume(repeat=false,onHud=false,mods={ctrlKey:true,shiftKey:true}){const e={isTrusted:true,code:'Equal',...mods,repeat,composedPath:()=>onHud?[shadow.querySelector('button'),w.document.querySelector('#fmr-hud')]:[],preventDefault(){this.prevented=true;},stopImmediatePropagation(){this.stopped=true;}};keydown(e);return e;}
@@ -35,6 +35,17 @@ test('meeting header visibility restores, and paused HUD expires after 3 seconds
 });
 test('header hiding can be disabled without disabling meeting controls',async()=>{
   const f=await fixture({hideHeader:false});assert.equal((await f.run('toggle')).ok,true);assert.equal(f.w.document.documentElement.hasAttribute('data-fmr-presentation'),false);f.d.window.close();
+});
+test('TV requests an explicit window exit while background page cleanup does not',async()=>{
+  const f=await fixture();await f.run('toggle');await f.run('toggle');
+  assert.deepEqual(f.messages.filter(m=>m.type==='presentation').map(m=>m.exitFullscreen),[undefined,true]);
+  await f.run('toggle');f.w.dispatchEvent(new f.w.PageTransitionEvent('pagehide',{persisted:true}));await settle();
+  assert.equal(f.messages.filter(m=>m.type==='presentation').at(-1).exitFullscreen,undefined);f.d.window.close();
+});
+test('a failed native fullscreen exit does not partially turn off the meeting layout',async()=>{
+  const f=await fixture();await f.run('toggle');f.state.presentationReply={ok:false,error:'Window transition rejected'};
+  assert.equal((await f.run('toggle')).ok,false);assert.equal((await f.message({type:'meeting-status'})).enabled,true);
+  assert.equal(f.w.document.documentElement.hasAttribute('data-fmr-presentation'),true);assert.equal(f.state.sidebarAttempts,1);f.d.window.close();
 });
 test('all rapid repeat volume keys reach the queue from HUD focus and during Base rerender',async()=>{
   const f=await fixture();assert.equal((await f.run('toggle')).enabled,true);f.state.base=false;assert.equal((await f.run('zoomIn')).ok,true);
